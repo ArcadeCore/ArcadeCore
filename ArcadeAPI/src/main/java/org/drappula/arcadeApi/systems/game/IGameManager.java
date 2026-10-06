@@ -1,6 +1,8 @@
 package org.drappula.arcadeApi.systems.game;
 
-import javax.annotation.Nullable;
+import org.jspecify.annotations.Nullable;
+
+import java.util.Collection;
 
 public interface IGameManager {
     void registerGame(Game game);
@@ -8,4 +10,6 @@ public interface IGameManager {
     void unregisterGame(Game game);
     @Nullable
     Game getGame(String id);
+    Collection<Game> getRegisteredGames();
+    boolean isRegistered(String id);
 }

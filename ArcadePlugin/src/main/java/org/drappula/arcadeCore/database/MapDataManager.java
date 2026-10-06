@@ -59,6 +59,11 @@ public class MapDataManager {
                 }
             }
         }
+        Map<String, Map<String, String>> configsByMap = loadConfigs();
+        for (ArcadeMap map : maps) {
+            Map<String, String> config = configsByMap.get(map.getId());
+            if (config != null) map.getConfigInternal().putAll(config);
+        }
         return maps;
     }
 
@@ -125,6 +130,49 @@ public class MapDataManager {
     public static void delete(String mapId) throws SQLException {
         try (PreparedStatement stmt = Database.get().prepareStatement("DELETE FROM maps WHERE map_id = ?")) {
             stmt.setString(1, mapId);
+            stmt.executeUpdate();
+        }
+    }
+
+    public static Map<String, Map<String, String>> loadConfigs() throws SQLException {
+        Map<String, Map<String, String>> configsByMap = new LinkedHashMap<>();
+        try (Statement stmt = Database.get().createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT map_id, key, value FROM map_config")) {
+            while (rs.next()) {
+                configsByMap.computeIfAbsent(rs.getString("map_id"), id -> new LinkedHashMap<>())
+                        .put(rs.getString("key"), rs.getString("value"));
+            }
+        }
+        return configsByMap;
+    }
+
+    public static void setConfig(String mapId, String key, String value) throws SQLException {
+        try (PreparedStatement stmt = Database.get().prepareStatement(
+                "INSERT INTO map_config (map_id, key, value) VALUES (?, ?, ?) " +
+                        "ON CONFLICT(map_id, key) DO UPDATE SET value = excluded.value")) {
+            stmt.setString(1, mapId);
+            stmt.setString(2, key);
+            stmt.setString(3, value);
+            stmt.executeUpdate();
+        }
+    }
+
+    public static void deleteConfig(String mapId, String key) throws SQLException {
+        try (PreparedStatement stmt = Database.get().prepareStatement(
+                "DELETE FROM map_config WHERE map_id = ? AND key = ?")) {
+            stmt.setString(1, mapId);
+            stmt.setString(2, key);
+            stmt.executeUpdate();
+        }
+    }
+
+    public static void ensureConfig(String mapId, String key, String value) throws SQLException {
+        try (PreparedStatement stmt = Database.get().prepareStatement(
+                "INSERT INTO map_config (map_id, key, value) VALUES (?, ?, ?) " +
+                        "ON CONFLICT(map_id, key) DO NOTHING")) {
+            stmt.setString(1, mapId);
+            stmt.setString(2, key);
+            stmt.setString(3, value);
             stmt.executeUpdate();
         }
     }

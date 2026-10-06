@@ -2,7 +2,6 @@ package org.drappula.arcadeCore.managers.queue.tasks;
 
 import org.bukkit.scheduler.BukkitRunnable;
 import org.drappula.arcadeApi.systems.game.Game;
-import org.drappula.arcadeCore.config.MainConfig;
 import org.drappula.arcadeCore.managers.queue.QueueManager;
 
 public class QueueCountdownTask extends BukkitRunnable {
@@ -11,7 +10,7 @@ public class QueueCountdownTask extends BukkitRunnable {
 
     public QueueCountdownTask(Game game) {
         this.game = game;
-        this.timeLeft = MainConfig.get().getOptionalFloat("queue.start-countdown").orElse(20f);
+        this.timeLeft = (float) QueueManager.get().getCountdownSeconds(game);
     }
 
     @Override

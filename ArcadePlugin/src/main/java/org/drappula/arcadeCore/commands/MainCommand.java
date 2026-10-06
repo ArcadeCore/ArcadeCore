@@ -10,14 +10,20 @@ import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
+import org.bukkit.entity.Player;
 import org.drappula.arcadeApi.systems.game.Game;
 import org.drappula.arcadeApi.systems.map.IArcadeMap;
+import org.drappula.arcadeApi.systems.map.MapConfigOption;
+import org.drappula.arcadeApi.systems.queue.JoinResult;
 import org.drappula.arcadeCore.ArcadeCore;
 import org.drappula.arcadeCore.config.DataConfig;
+import org.drappula.arcadeCore.config.MainConfig;
 import org.drappula.arcadeCore.config.MessagesConfig;
 import org.drappula.arcadeCore.managers.game.GameManager;
+import org.drappula.arcadeCore.managers.map.ArcadeMap;
 import org.drappula.arcadeCore.managers.map.MapManager;
 import org.drappula.arcadeCore.managers.queue.QueueManager;
+import org.drappula.arcadeCore.util.MessageUtil;
 
 import java.sql.SQLException;
 import java.util.concurrent.CompletableFuture;
@@ -69,6 +75,20 @@ public class MainCommand {
                                         .then(Commands.argument("mapId", StringArgumentType.word())
                                                 .executes(MainCommand::mapDelete)
                                                 .suggests(MainCommand::suggestMaps)))
+                                .then(Commands.literal("config")
+                                        .then(Commands.argument("mapId", StringArgumentType.word())
+                                                .suggests(MainCommand::suggestMaps)
+                                                .then(Commands.literal("set")
+                                                        .then(Commands.argument("key", StringArgumentType.word())
+                                                                .suggests(MainCommand::suggestConfigKeys)
+                                                                .then(Commands.argument("value", StringArgumentType.greedyString())
+                                                                        .executes(MainCommand::mapConfigSet))))
+                                                .then(Commands.literal("unset")
+                                                        .then(Commands.argument("key", StringArgumentType.word())
+                                                                .suggests(MainCommand::suggestConfigKeys)
+                                                                .executes(MainCommand::mapConfigUnset)))
+                                                .then(Commands.literal("list")
+                                                        .executes(MainCommand::mapConfigList))))
                 )
                 .build();
     }
@@ -89,6 +109,41 @@ public class MainCommand {
         return builder.buildFuture();
     }
 
+    private static CompletableFuture<Suggestions> suggestConfigKeys(CommandContext<CommandSourceStack> ctx, SuggestionsBuilder builder) {
+        String mapId;
+        try {
+            mapId = StringArgumentType.getString(ctx, "mapId");
+        } catch (IllegalArgumentException e) {
+            return builder.buildFuture();
+        }
+        ArcadeMap map = MapManager.get().getMap(mapId);
+        Game game = map == null ? null : GameManager.get().getGame(map.getGameId());
+        if (game != null) {
+            for (MapConfigOption option : game.getMapConfigOptions()) {
+                builder.suggest(option.key());
+            }
+        }
+        return builder.buildFuture();
+    }
+
+    private static MapConfigOption findConfigOption(Game game, String key) {
+        if (game == null) return null;
+        for (MapConfigOption option : game.getMapConfigOptions()) {
+            if (option.key().equals(key)) return option;
+        }
+        return null;
+    }
+
+    private static String registeredKeys(Game game) {
+        if (game == null || game.getMapConfigOptions().isEmpty()) return "(none)";
+        StringBuilder keys = new StringBuilder();
+        for (MapConfigOption option : game.getMapConfigOptions()) {
+            if (keys.length() > 0) keys.append(", ");
+            keys.append(option.key());
+        }
+        return keys.toString();
+    }
+
     private static int start(CommandContext<CommandSourceStack> ctx) {
         String gameId = StringArgumentType.getString(ctx, "game");
         Game game = GameManager.get().getGame(gameId);
@@ -106,11 +161,21 @@ public class MainCommand {
         String gameId = StringArgumentType.getString(ctx, "game");
         Game game = GameManager.get().getGame(gameId);
         if (game == null) {
-            ctx.getSource().getSender().sendRichMessage(MessagesConfig.get().getString("bad-arguments.unknown-game"),
+            MessageUtil.sendMessage(ctx.getSource().getSender(), MessagesConfig.get().getString("bad-arguments.unknown-game"),
                     TagResolver.resolver(Placeholder.unparsed("id", gameId)));
             return Command.SINGLE_SUCCESS;
         }
-
+        if (!(ctx.getSource().getSender() instanceof Player player)) {
+            ctx.getSource().getSender().sendRichMessage("<red>Only players can join the queue.");
+            return Command.SINGLE_SUCCESS;
+        }
+        TagResolver placeholders = TagResolver.resolver(Placeholder.unparsed("game", gameId));
+        JoinResult result = QueueManager.get().joinQueue(player, game);
+        if (result == JoinResult.SUCCESS) {
+            MessageUtil.sendMessage(player, MessagesConfig.get().getString("queue-joined"), placeholders);
+        } else {
+            MessageUtil.sendMessage(player, MessagesConfig.get().getString("queue-denied"), placeholders);
+        }
         return Command.SINGLE_SUCCESS;
     }
 
@@ -119,13 +184,13 @@ public class MainCommand {
         String gameId = StringArgumentType.getString(ctx, "game");
         Game game = GameManager.get().getGame(gameId);
         if (game == null) {
-            ctx.getSource().getSender().sendRichMessage(MessagesConfig.get().getString("bad-arguments.unknown-game"),
+            MessageUtil.sendMessage(ctx.getSource().getSender(), MessagesConfig.get().getString("bad-arguments.unknown-game"),
                     TagResolver.resolver(Placeholder.unparsed("id", gameId)));
             return Command.SINGLE_SUCCESS;
         }
         try {
             MapManager.get().createMap(mapId, gameId, mapId, ctx.getSource().getLocation().getWorld().getName());
-            ctx.getSource().getSender().sendRichMessage(MessagesConfig.get().getString("map-created"),
+            MessageUtil.sendMessage(ctx.getSource().getSender(), MessagesConfig.get().getString("map-created"),
                     TagResolver.resolver(Placeholder.unparsed("id", mapId), Placeholder.unparsed("game", gameId)));
         } catch (SQLException e) {
             ctx.getSource().getSender().sendRichMessage("<red>Failed to create the map. See the console for more details.");
@@ -137,7 +202,7 @@ public class MainCommand {
     private static int mapAddSpawn(CommandContext<CommandSourceStack> ctx) {
         String mapId = StringArgumentType.getString(ctx, "mapId");
         if (MapManager.get().getMap(mapId) == null) {
-            ctx.getSource().getSender().sendRichMessage(MessagesConfig.get().getString("map-not-found"),
+            MessageUtil.sendMessage(ctx.getSource().getSender(), MessagesConfig.get().getString("map-not-found"),
                     TagResolver.resolver(Placeholder.unparsed("id", mapId)));
             return Command.SINGLE_SUCCESS;
         }
@@ -155,7 +220,7 @@ public class MainCommand {
     private static int mapSetEnabled(CommandContext<CommandSourceStack> ctx, boolean enabled) {
         String mapId = StringArgumentType.getString(ctx, "mapId");
         if (MapManager.get().getMap(mapId) == null) {
-            ctx.getSource().getSender().sendRichMessage(MessagesConfig.get().getString("map-not-found"),
+            MessageUtil.sendMessage(ctx.getSource().getSender(), MessagesConfig.get().getString("map-not-found"),
                     TagResolver.resolver(Placeholder.unparsed("id", mapId)));
             return Command.SINGLE_SUCCESS;
         }
@@ -190,10 +255,101 @@ public class MainCommand {
         return Command.SINGLE_SUCCESS;
     }
 
-    private static int mapDelete(CommandContext<CommandSourceStack> ctx) {
+    private static int mapConfigSet(CommandContext<CommandSourceStack> ctx) {
         String mapId = StringArgumentType.getString(ctx, "mapId");
+        ArcadeMap map = MapManager.get().getMap(mapId);
+        if (map == null) {
+            MessageUtil.sendMessage(ctx.getSource().getSender(), MessagesConfig.get().getString("map-not-found"),
+                    TagResolver.resolver(Placeholder.unparsed("id", mapId)));
+            return Command.SINGLE_SUCCESS;
+        }
+        Game game = GameManager.get().getGame(map.getGameId());
+        String key = StringArgumentType.getString(ctx, "key");
+        MapConfigOption option = findConfigOption(game, key);
+        if (option == null) {
+            MessageUtil.sendMessage(ctx.getSource().getSender(), MessagesConfig.get().getString("map-config-unknown-key"),
+                    TagResolver.resolver(Placeholder.unparsed("key", key), Placeholder.unparsed("keys", registeredKeys(game))));
+            return Command.SINGLE_SUCCESS;
+        }
+        String canonical;
+        try {
+            canonical = option.validateAndCanonicalize(StringArgumentType.getString(ctx, "value"));
+        } catch (IllegalArgumentException e) {
+            MessageUtil.sendMessage(ctx.getSource().getSender(), MessagesConfig.get().getString("map-config-invalid-value"),
+                    TagResolver.resolver(Placeholder.unparsed("key", key), Placeholder.unparsed("expected", e.getMessage())));
+            return Command.SINGLE_SUCCESS;
+        }
+        try {
+            MapManager.get().setMapConfig(mapId, key, canonical);
+            MessageUtil.sendMessage(ctx.getSource().getSender(), MessagesConfig.get().getString("map-config-set"),
+                    TagResolver.resolver(Placeholder.unparsed("id", mapId),
+                            Placeholder.unparsed("key", key), Placeholder.unparsed("value", canonical)));
+        } catch (SQLException e) {
+            ctx.getSource().getSender().sendRichMessage("<red>Failed to update the map. See the console for more details.");
+            ArcadeCore.get().getSLF4JLogger().error("Failed to set config {} on map {}", key, mapId, e);
+        }
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int mapConfigUnset(CommandContext<CommandSourceStack> ctx) {
+        String mapId = StringArgumentType.getString(ctx, "mapId");
+        ArcadeMap map = MapManager.get().getMap(mapId);
+        if (map == null) {
+            MessageUtil.sendMessage(ctx.getSource().getSender(), MessagesConfig.get().getString("map-not-found"),
+                    TagResolver.resolver(Placeholder.unparsed("id", mapId)));
+            return Command.SINGLE_SUCCESS;
+        }
+        Game game = GameManager.get().getGame(map.getGameId());
+        String key = StringArgumentType.getString(ctx, "key");
+        if (findConfigOption(game, key) == null) {
+            MessageUtil.sendMessage(ctx.getSource().getSender(), MessagesConfig.get().getString("map-config-unknown-key"),
+                    TagResolver.resolver(Placeholder.unparsed("key", key), Placeholder.unparsed("keys", registeredKeys(game))));
+            return Command.SINGLE_SUCCESS;
+        }
+        if (!map.getConfigOverrides().containsKey(key)) {
+            MessageUtil.sendMessage(ctx.getSource().getSender(), MessagesConfig.get().getString("map-config-no-override"),
+                    TagResolver.resolver(Placeholder.unparsed("id", mapId), Placeholder.unparsed("key", key)));
+            return Command.SINGLE_SUCCESS;
+        }
+        try {
+            MapManager.get().deleteMapConfig(mapId, key);
+            MessageUtil.sendMessage(ctx.getSource().getSender(), MessagesConfig.get().getString("map-config-unset"),
+                    TagResolver.resolver(Placeholder.unparsed("id", mapId), Placeholder.unparsed("key", key)));
+        } catch (SQLException e) {
+            ctx.getSource().getSender().sendRichMessage("<red>Failed to update the map. See the console for more details.");
+            ArcadeCore.get().getSLF4JLogger().error("Failed to delete config {} on map {}", key, mapId, e);
+        }
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int mapConfigList(CommandContext<CommandSourceStack> ctx) {
+        String mapId = StringArgumentType.getString(ctx, "mapId");
+        ArcadeMap map = MapManager.get().getMap(mapId);
+        if (map == null) {
+            MessageUtil.sendMessage(ctx.getSource().getSender(), MessagesConfig.get().getString("map-not-found"),
+                    TagResolver.resolver(Placeholder.unparsed("id", mapId)));
+            return Command.SINGLE_SUCCESS;
+        }
+        Game game = GameManager.get().getGame(map.getGameId());
+        if (game == null || game.getMapConfigOptions().isEmpty()) {
+            ctx.getSource().getSender().sendRichMessage("<yellow>Map <gray><id></gray> has no config options.",
+                    TagResolver.resolver(Placeholder.unparsed("id", mapId)));
+            return Command.SINGLE_SUCCESS;
+        }
+        StringBuilder message = new StringBuilder("<aqua>Config for <id>:</aqua>");
+        TagResolver placeholders = TagResolver.resolver(Placeholder.unparsed("id", mapId));
+        for (MapConfigOption option : game.getMapConfigOptions()) {
+            String effective = map.getConfigOverrides().getOrDefault(option.key(), option.defaultValue());
+            message.append("<br><gray> - ").append(option.key()).append("=").append(effective);
+            if (map.getConfigOverrides().containsKey(option.key())) message.append(" <yellow>[override]</yellow>");
+        }
+        ctx.getSource().getSender().sendRichMessage(message.toString(), placeholders);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int mapDelete(CommandContext<CommandSourceStack> ctx) {        String mapId = StringArgumentType.getString(ctx, "mapId");
         if (MapManager.get().getMap(mapId) == null) {
-            ctx.getSource().getSender().sendRichMessage(MessagesConfig.get().getString("map-not-found"),
+            MessageUtil.sendMessage(ctx.getSource().getSender(), MessagesConfig.get().getString("map-not-found"),
                     TagResolver.resolver(Placeholder.unparsed("id", mapId)));
             return Command.SINGLE_SUCCESS;
         }
@@ -225,6 +381,8 @@ public class MainCommand {
     private static int reload(CommandContext<CommandSourceStack> ctx) {
         try {
             DataConfig.get().reload();
+            MainConfig.get().reload();
+            MessagesConfig.get().reload();
             ctx.getSource().getSender().sendRichMessage("<green>Reloaded the plugin configuration.");
         } catch (Exception e) {
             ctx.getSource().getSender().sendRichMessage("<red>Failed to reload the plugin! See the console for more details.");

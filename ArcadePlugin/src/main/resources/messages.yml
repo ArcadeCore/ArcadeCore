@@ -18,10 +18,21 @@
 countdown-message-singular: "title:<time>;subtitle:<gray>second remaining;titletime:0:900:100"
 countdown-message-plural: "title:<time>;subtitle:<gray>seconds remaining;titletime:0:900:100"
 match-started: "title:<green><b> Go!;titletime:300:1000:300"
-match-ended: "title:<green><b>Match ended!"
+match-ended: "title:<green><b>Match ended!;message:<gray>The match has ended."
+match-won: "message:<gold><b><winners></b></gold> won the match!"
 participant-eliminated: "message:<red><b><participant></b></red> has been eliminated from the game!"
 bad-arguments:
   unknown-game: "message:<red>Unknown game: <gray><id></gray>"
 map-created: "message:<green>Created map <gray><id></gray> for game <gray><game></gray>."
 map-not-found: "message:<red>Unknown map: <gray><id></gray>"
+map-config-set: "message:<green>Set <gray><key></gray> to <gray><value></gray> on map <gray><id></gray>."
+map-config-unset: "message:<green>Removed <gray><key></gray> from map <gray><id></gray>; now using the default."
+map-config-unknown-key: "message:<red>Unknown option <gray><key></gray> for this game. Available: <gray><keys></gray>"
+map-config-invalid-value: "message:<red>Invalid value for <gray><key></gray>: <gray><expected></gray>"
+map-config-no-override: "message:<yellow>Map <gray><id></gray> has no override for <gray><key></gray>."
 map-unavailable: "message:<red>No map is available right now, please try again shortly."
+queue-joined: "message:<green>Joined the queue for <gray><game></gray>."
+queue-denied: "message:<red>You could not join the queue for <gray><game></gray>."
+
+# DO NOT TOUCH THIS
+version: 1

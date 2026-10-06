@@ -1,9 +1,14 @@
 package org.drappula.arcadeCore.managers.map;
 
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.drappula.arcadeApi.systems.map.IArcadeMap;
+import org.jspecify.annotations.Nullable;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class ArcadeMap implements IArcadeMap {
     private final String id;
@@ -13,6 +18,7 @@ public class ArcadeMap implements IArcadeMap {
     private boolean enabled;
     private boolean inUse;
     private final List<Location> spawnPoints;
+    private final Map<String, String> config = new HashMap<>();
 
     public ArcadeMap(String id, String gameId, String displayName, String worldName, boolean enabled, boolean inUse, List<Location> spawnPoints) {
         this.id = id;
@@ -49,6 +55,26 @@ public class ArcadeMap implements IArcadeMap {
         this.inUse = inUse;
     }
     public List<Location> getSpawnPoints() {
+        return List.copyOf(spawnPoints);
+    }
+
+    /** Internal mutable view for spawn administration. */
+    List<Location> getSpawnPointsInternal() {
         return spawnPoints;
+    }
+
+    /** Internal mutable view for config administration (database load, manager write-through). */
+    public Map<String, String> getConfigInternal() {
+        return config;
+    }
+
+    @Override
+    public Map<String, String> getConfigOverrides() {
+        return Map.copyOf(config);
+    }
+
+    @Override
+    public @Nullable World getWorld() {
+        return Bukkit.getWorld(worldName);
     }
 }

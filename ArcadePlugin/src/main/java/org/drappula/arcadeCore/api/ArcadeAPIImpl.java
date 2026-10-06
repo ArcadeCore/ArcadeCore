@@ -2,19 +2,28 @@ package org.drappula.arcadeCore.api;
 
 import org.bukkit.entity.Player;
 import org.drappula.arcadeApi.ArcadeAPI;
+import org.drappula.arcadeApi.database.IGameStatsManager;
 import org.drappula.arcadeApi.database.UserData;
+import org.drappula.arcadeApi.systems.IPlayerService;
+import org.drappula.arcadeApi.systems.IProfile;
+import org.drappula.arcadeApi.systems.IProfileManager;
 import org.drappula.arcadeApi.systems.game.Game;
+import org.drappula.arcadeApi.systems.game.IGameManager;
 import org.drappula.arcadeApi.systems.game.IMatchManager;
 import org.drappula.arcadeApi.systems.game.IParticipant;
 import org.drappula.arcadeApi.systems.map.IMapManager;
 import org.drappula.arcadeApi.systems.queue.IQueueManager;
+import org.drappula.arcadeCore.database.GameStatsManager;
+import org.drappula.arcadeCore.managers.PlayerService;
+import org.drappula.arcadeCore.managers.ProfileManager;
 import org.drappula.arcadeCore.managers.UserDataManager;
 import org.drappula.arcadeCore.managers.game.GameManager;
 import org.drappula.arcadeCore.managers.game.MatchManager;
 import org.drappula.arcadeCore.managers.map.MapManager;
 import org.drappula.arcadeCore.managers.queue.QueueManager;
+import org.drappula.arcadeCore.util.PlayerUtil;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
@@ -35,8 +44,8 @@ public class ArcadeAPIImpl implements ArcadeAPI {
         UserDataManager.save(profile);
     }
 
-    @Override @Nullable
-    public GameManager getGameManager() {
+    @Override
+    public IGameManager getGameManager() {
         return GameManager.get();
     }
 
@@ -56,18 +65,35 @@ public class ArcadeAPIImpl implements ArcadeAPI {
     }
 
     @Override
-    public IParticipant getParticipant(Game game, Player player) {
-        for (IParticipant participant : GameManager.get().getParticipants().getOrDefault(game.getId(), List.of())) {
-            if (participant.getPlayer() == player) return participant;
-        }
-        return null;
+    public IGameStatsManager getStatsManager() {
+        return GameStatsManager.get();
     }
-    @Override @Deprecated @Nullable
-    public IParticipant getParticipant(Player player) {
-        for (String gameId : GameManager.get().getGames().keySet()) {
-            for (IParticipant participant : GameManager.get().getParticipants().getOrDefault(gameId, List.of())) {
-                if (participant.getPlayer() == player) return participant;
-            }
+
+    @Override
+    public IProfileManager getProfileManager() {
+        return ProfileManager.get();
+    }
+
+    @Override
+    public IPlayerService getPlayerService() {
+        return PlayerService.get();
+    }
+
+    @Override
+    public @Nullable IProfile getProfile(Player player) {
+        return ProfileManager.getProfile(player);
+    }
+
+    @Override
+    public void sendToLobby(Player player) {
+        PlayerUtil.sendToLobby(player);
+    }
+
+    @Override
+    public @Nullable IParticipant getParticipant(Game game, Player player) {
+        UUID uuid = player.getUniqueId();
+        for (IParticipant participant : GameManager.get().getParticipants().getOrDefault(game.getId().toLowerCase(), List.of())) {
+            if (participant.getPlayer().getUniqueId().equals(uuid)) return participant;
         }
         return null;
     }

@@ -11,8 +11,10 @@ import org.drappula.arcadeCore.config.MainConfig;
 import org.drappula.arcadeCore.config.MessagesConfig;
 import org.drappula.arcadeCore.database.Database;
 import org.drappula.arcadeCore.listeners.LobbyListener;
+import org.drappula.arcadeCore.listeners.MatchListener;
 import org.drappula.arcadeCore.managers.game.GameManager;
 import org.drappula.arcadeCore.managers.map.MapManager;
+import org.drappula.arcadeCore.managers.world.ArenaWorldManager;
 
 import java.sql.SQLException;
 
@@ -29,8 +31,11 @@ public final class ArcadeCore extends JavaPlugin {
         setupConfig();
         connectDatabase();
         MapManager.get().load();
+        ArenaWorldManager.get().destroyOrphanedArenas();
         registerCommands();
         registerListeners();
+        getServer().getScheduler().runTaskTimer(this,
+                () -> ArenaWorldManager.get().sweepIdleArenas(), 600L, 600L);
         registerAPI();
     }
     private void setupConfig() {
@@ -51,6 +56,7 @@ public final class ArcadeCore extends JavaPlugin {
     }
     private void registerListeners() {
         getServer().getPluginManager().registerEvents(new LobbyListener(), this);
+        getServer().getPluginManager().registerEvents(new MatchListener(), this);
     }
     private void registerAPI() {
         ArcadeAPI impl = new ArcadeAPIImpl();
@@ -60,6 +66,7 @@ public final class ArcadeCore extends JavaPlugin {
     @Override
     public void onDisable() {
         GameManager.get().reload();
+        ArenaWorldManager.get().destroyAll();
         MapManager.get().releaseAll();
         try {
             Database.disconnect();

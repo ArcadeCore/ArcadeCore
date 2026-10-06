@@ -5,10 +5,11 @@ import org.drappula.arcadeApi.database.UserData;
 import org.drappula.arcadeApi.systems.IProfile;
 import org.drappula.arcadeApi.systems.game.IMatch;
 import org.drappula.arcadeCore.managers.UserDataManager;
+import org.jspecify.annotations.Nullable;
 
 public class Profile implements IProfile {
     private final Player player;
-    private IMatch match;
+    private @Nullable IMatch match;
 
     public Profile(Player player) {
         this.player = player;
@@ -25,12 +26,12 @@ public class Profile implements IProfile {
     }
 
     @Override
-    public IMatch getMatch() {
+    public @Nullable IMatch getMatch() {
         return match;
     }
 
     @Override
-    public void setMatch(IMatch match) {
+    public void setMatch(@Nullable IMatch match) {
         this.match = match;
     }
 }

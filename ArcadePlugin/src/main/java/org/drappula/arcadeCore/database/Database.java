@@ -50,6 +50,12 @@ public class Database {
                     "pitch REAL NOT NULL, " +
                     "PRIMARY KEY (map_id, spawn_index), " +
                     "FOREIGN KEY (map_id) REFERENCES maps(map_id) ON DELETE CASCADE)");
+            stmt.execute("CREATE TABLE IF NOT EXISTS map_config (" +
+                    "map_id TEXT NOT NULL, " +
+                    "key TEXT NOT NULL, " +
+                    "value TEXT NOT NULL, " +
+                    "PRIMARY KEY (map_id, key), " +
+                    "FOREIGN KEY (map_id) REFERENCES maps(map_id) ON DELETE CASCADE)");
         }
     }
 

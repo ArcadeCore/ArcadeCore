@@ -1,10 +1,13 @@
 package org.drappula.arcadeCore.managers.map;
 
 import org.bukkit.Location;
+import org.drappula.arcadeApi.systems.game.Game;
 import org.drappula.arcadeApi.systems.map.IArcadeMap;
 import org.drappula.arcadeApi.systems.map.IMapManager;
+import org.drappula.arcadeApi.systems.map.MapConfigOption;
 import org.drappula.arcadeCore.ArcadeCore;
 import org.drappula.arcadeCore.database.MapDataManager;
+import org.drappula.arcadeCore.managers.game.GameManager;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -34,7 +37,21 @@ public class MapManager implements IMapManager {
         for (ArcadeMap map : maps) {
             if (map.getGameId().equalsIgnoreCase(gameId)) result.add(map);
         }
-        return result;
+        return List.copyOf(result);
+    }
+
+    @Override
+    public List<IArcadeMap> getAllMaps() {
+        return List.copyOf(new ArrayList<IArcadeMap>(maps));
+    }
+
+    @Override
+    public List<IArcadeMap> getAvailableMaps(String gameId) {
+        List<IArcadeMap> result = new ArrayList<>();
+        for (ArcadeMap map : maps) {
+            if (map.getGameId().equalsIgnoreCase(gameId) && map.isAvailable()) result.add(map);
+        }
+        return List.copyOf(result);
     }
 
     public ArcadeMap getMap(String mapId) {
@@ -46,7 +63,7 @@ public class MapManager implements IMapManager {
 
     public Optional<IArcadeMap> acquireMap(String gameId) {
         for (ArcadeMap map : maps) {
-            if (map.getGameId().equalsIgnoreCase(gameId) && map.isEnabled() && !map.isInUse() && !map.getSpawnPoints().isEmpty()) {
+            if (map.getGameId().equalsIgnoreCase(gameId) && map.isEnabled() && !map.isInUse() && !map.getSpawnPointsInternal().isEmpty()) {
                 map.setInUse(true);
                 try {
                     MapDataManager.setInUse(map.getId(), true);
@@ -83,13 +100,45 @@ public class MapManager implements IMapManager {
     public void createMap(String mapId, String gameId, String displayName, String world) throws SQLException {
         MapDataManager.create(mapId, gameId, displayName, world);
         maps.add(new ArcadeMap(mapId, gameId, displayName, world, true, false, new ArrayList<>()));
+        ensureDefaultConfig(mapId);
+    }
+
+    /**
+     * Ensures defaults for every map of a game (e.g. options the addon added
+     * since the maps were created). Never overwrites stored values.
+     */
+    public void backfillDefaultConfig(String gameId) {
+        for (ArcadeMap map : maps) {
+            if (!map.getGameId().equalsIgnoreCase(gameId)) continue;
+            try {
+                ensureDefaultConfig(map.getId());
+            } catch (SQLException e) {
+                ArcadeCore.get().getSLF4JLogger().error("Failed to backfill config for map {}", map.getId(), e);
+            }
+        }
+    }
+
+    /**
+     * Writes every registered default for the map's game that has no stored
+     * value yet. Never overwrites admin customization. No-op when the map or
+     * its game is unknown.
+     */
+    public void ensureDefaultConfig(String mapId) throws SQLException {
+        ArcadeMap map = getMap(mapId);
+        if (map == null) return;
+        Game game = GameManager.get().getGame(map.getGameId());
+        if (game == null) return;
+        for (MapConfigOption option : game.getMapConfigOptions()) {
+            MapDataManager.ensureConfig(mapId, option.key(), option.defaultValue());
+            map.getConfigInternal().putIfAbsent(option.key(), option.defaultValue());
+        }
     }
 
     public void addSpawn(String mapId, Location location) throws SQLException {
         ArcadeMap map = getMap(mapId);
         if (map == null) return;
-        MapDataManager.addSpawn(mapId, map.getSpawnPoints().size(), location);
-        map.getSpawnPoints().add(location);
+        MapDataManager.addSpawn(mapId, map.getSpawnPointsInternal().size(), location);
+        map.getSpawnPointsInternal().add(location.clone());
     }
 
     public void setEnabled(String mapId, boolean enabled) throws SQLException {
@@ -102,5 +151,19 @@ public class MapManager implements IMapManager {
     public void deleteMap(String mapId) throws SQLException {
         MapDataManager.delete(mapId);
         maps.removeIf(m -> m.getId().equalsIgnoreCase(mapId));
+    }
+
+    public void setMapConfig(String mapId, String key, String value) throws SQLException {
+        ArcadeMap map = getMap(mapId);
+        if (map == null) return;
+        MapDataManager.setConfig(mapId, key, value);
+        map.getConfigInternal().put(key, value);
+    }
+
+    public void deleteMapConfig(String mapId, String key) throws SQLException {
+        ArcadeMap map = getMap(mapId);
+        if (map == null) return;
+        MapDataManager.deleteConfig(mapId, key);
+        map.getConfigInternal().remove(key);
     }
 }
