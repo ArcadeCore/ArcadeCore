@@ -206,6 +206,11 @@ public class MainCommand {
                     TagResolver.resolver(Placeholder.unparsed("id", mapId)));
             return Command.SINGLE_SUCCESS;
         }
+        // A console/RCON/command-block source would silently store its own (world spawn) position.
+        if (!(ctx.getSource().getSender() instanceof Player)) {
+            ctx.getSource().getSender().sendRichMessage("<red>Only players can add spawn points (uses your position).");
+            return Command.SINGLE_SUCCESS;
+        }
         try {
             MapManager.get().addSpawn(mapId, ctx.getSource().getLocation());
             ctx.getSource().getSender().sendRichMessage("<green>Added a spawn point to map <gray><id></gray>.",

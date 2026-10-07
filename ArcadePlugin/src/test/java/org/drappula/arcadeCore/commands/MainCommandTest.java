@@ -332,6 +332,17 @@ class MainCommandTest extends ServerTest {
     }
 
     @Test
+    void mapAddSpawnRejectsNonPlayerSender() throws Exception {
+        GameManager.get().registerGame(new FakeGame());
+        MapManager.get().createMap("arena", "game", "Arena", "world");
+        PlayerMock player = server.addPlayer();
+
+        invoke("mapAddSpawn", ctx(null, "arena", stack(server.getConsoleSender(), player.getLocation())));
+
+        assertEquals(0, MapManager.get().getMap("arena").getSpawnPoints().size());
+    }
+
+    @Test
     void mapAddSpawnStoresClone() throws Exception {
         GameManager.get().registerGame(new FakeGame());
         MapManager.get().createMap("arena", "game", "Arena", "world");

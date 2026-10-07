@@ -86,14 +86,26 @@ public class GameStatsManager implements IGameStatsManager {
     @Override
     public Optional<GameStats> getStats(UUID uuid, String gameId) throws SQLException {
         try (PreparedStatement stmt = Database.get().prepareStatement(
-                "SELECT points, wins, losses FROM game_stats WHERE uuid = ? AND game_id = ?")) {
+                "SELECT points, wins, losses, other_stats FROM game_stats WHERE uuid = ? AND game_id = ?")) {
             stmt.setString(1, uuid.toString());
             stmt.setString(2, gameId);
             try (ResultSet rs = stmt.executeQuery()) {
                 if (!rs.next()) return Optional.empty();
                 return Optional.of(new GameStats(uuid, gameId,
-                        rs.getInt("points"), rs.getInt("wins"), rs.getInt("losses")));
+                        rs.getInt("points"), rs.getInt("wins"), rs.getInt("losses"), parseOther(rs.getString("other_stats"))));
             }
+        }
+    }
+
+    private static Map<String, Integer> parseOther(String json) {
+        if (json == null || json.isBlank()) return Map.of();
+        try {
+            Map<String, Integer> out = new LinkedHashMap<>();
+            com.google.gson.JsonObject obj = com.google.gson.JsonParser.parseString(json).getAsJsonObject();
+            obj.entrySet().forEach(e -> out.put(e.getKey(), e.getValue().getAsInt()));
+            return out;
+        } catch (RuntimeException e) {
+            return Map.of();
         }
     }
 
@@ -101,14 +113,72 @@ public class GameStatsManager implements IGameStatsManager {
     public List<GameStats> getTopPlayers(String gameId, int limit) throws SQLException {
         List<GameStats> top = new ArrayList<>();
         try (PreparedStatement stmt = Database.get().prepareStatement(
-                "SELECT uuid, points, wins, losses FROM game_stats WHERE game_id = ? " +
+                "SELECT uuid, points, wins, losses, other_stats FROM game_stats WHERE game_id = ? " +
                         "ORDER BY wins DESC, points DESC LIMIT ?")) {
             stmt.setString(1, gameId);
             stmt.setInt(2, Math.max(1, limit));
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
                     top.add(new GameStats(UUID.fromString(rs.getString("uuid")), gameId,
-                            rs.getInt("points"), rs.getInt("wins"), rs.getInt("losses")));
+                            rs.getInt("points"), rs.getInt("wins"), rs.getInt("losses"), parseOther(rs.getString("other_stats"))));
+                }
+            }
+        }
+        return List.copyOf(top);
+    }
+
+    @Override
+    public void addStat(UUID uuid, String username, String gameId, String key, int delta) throws SQLException {
+        if (!key.matches("[a-z0-9_]+")) throw new IllegalArgumentException("Invalid stat key: " + key);
+        UserDataManager.getOrCreate(uuid, username);
+        try (PreparedStatement stmt = Database.get().prepareStatement(
+                "INSERT INTO games (game_id) VALUES (?) ON CONFLICT(game_id) DO NOTHING")) {
+            stmt.setString(1, gameId);
+            stmt.executeUpdate();
+        }
+        String path = "$." + key;
+        try (PreparedStatement stmt = Database.get().prepareStatement(
+                "INSERT INTO game_stats (uuid, game_id, points, wins, losses, other_stats) " +
+                        "VALUES (?, ?, 0, 0, 0, json_set('{}', ?, ?)) " +
+                        "ON CONFLICT(uuid, game_id) DO UPDATE SET other_stats = json_set(" +
+                        "COALESCE(game_stats.other_stats, '{}'), ?, " +
+                        "COALESCE(json_extract(game_stats.other_stats, ?), 0) + ?)")) {
+            stmt.setString(1, uuid.toString());
+            stmt.setString(2, gameId);
+            stmt.setString(3, path);
+            stmt.setInt(4, delta);
+            stmt.setString(5, path);
+            stmt.setString(6, path);
+            stmt.setInt(7, delta);
+            stmt.executeUpdate();
+        }
+    }
+
+    @Override
+    public int getStat(UUID uuid, String gameId, String key) throws SQLException {
+        if (!key.matches("[a-z0-9_]+")) throw new IllegalArgumentException("Invalid stat key: " + key);
+        try (PreparedStatement stmt = Database.get().prepareStatement(
+                "SELECT COALESCE(json_extract(other_stats, ?), 0) AS v FROM game_stats WHERE uuid = ? AND game_id = ?")) {
+            stmt.setString(1, "$." + key);
+            stmt.setString(2, uuid.toString());
+            stmt.setString(3, gameId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next() ? rs.getInt("v") : 0;
+            }
+        }
+    }
+
+    @Override
+    public List<GameStats> getTopOverall(int limit) throws SQLException {
+        List<GameStats> top = new ArrayList<>();
+        try (PreparedStatement stmt = Database.get().prepareStatement(
+                "SELECT uuid, SUM(points) AS p, SUM(wins) AS w, SUM(losses) AS l FROM game_stats " +
+                        "GROUP BY uuid ORDER BY w DESC, p DESC LIMIT ?")) {
+            stmt.setInt(1, Math.max(1, limit));
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    top.add(new GameStats(UUID.fromString(rs.getString("uuid")), "*",
+                            rs.getInt("p"), rs.getInt("w"), rs.getInt("l")));
                 }
             }
         }

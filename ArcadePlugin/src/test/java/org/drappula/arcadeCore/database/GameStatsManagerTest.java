@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -134,5 +135,40 @@ class GameStatsManagerTest {
         // Equal wins (0): higher points first.
         assertEquals(second, top.get(0).getUuid());
         assertEquals(first, top.get(1).getUuid());
+    }
+
+    @Test
+    void customStatsAccumulateAndSurfaceInGameStats() throws Exception {
+        UUID id = UUID.randomUUID();
+        GameStatsManager.get().addStat(id, "p", "game", "kills", 1);
+        GameStatsManager.get().addStat(id, "p", "game", "kills", 2);
+        GameStatsManager.get().addStat(id, "p", "game", "survival_seconds", 30);
+
+        assertEquals(3, GameStatsManager.get().getStat(id, "game", "kills"));
+        assertEquals(0, GameStatsManager.get().getStat(id, "game", "deaths"));
+        assertEquals(Map.of("kills", 3, "survival_seconds", 30),
+                GameStatsManager.get().getStats(id, "game").orElseThrow().getOther());
+        assertThrows(IllegalArgumentException.class,
+                () -> GameStatsManager.get().addStat(id, "p", "game", "bad key", 1));
+    }
+
+    @Test
+    void customStatsDoNotClobberPoints() throws Exception {
+        UUID id = UUID.randomUUID();
+        GameStatsManager.get().addPoints(id, "p", "game", 7);
+        GameStatsManager.get().addStat(id, "p", "game", "kills", 1);
+        assertEquals(7, GameStatsManager.get().getStats(id, "game").orElseThrow().getPoints());
+    }
+
+    @Test
+    void topOverallSumsAcrossGames() throws Exception {
+        UUID a = UUID.randomUUID();
+        UUID b = UUID.randomUUID();
+        GameStatsManager.get().addPoints(a, "a", "g1", 3);
+        GameStatsManager.get().addPoints(a, "a", "g2", 4);
+        GameStatsManager.get().addPoints(b, "b", "g1", 5);
+        List<GameStats> top = GameStatsManager.get().getTopOverall(10);
+        assertEquals(a, top.get(0).getUuid());
+        assertEquals(7, top.get(0).getPoints());
     }
 }
