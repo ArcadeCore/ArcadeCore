@@ -1,6 +1,5 @@
 package org.drappula.arcadeApi.systems.game;
 
-import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import org.bukkit.entity.Player;
 import org.drappula.arcadeApi.systems.map.IArcadeMap;
 import org.jspecify.annotations.Nullable;
@@ -56,5 +55,11 @@ public interface IMatch {
     void removeSpectator(Player player);
     boolean isSpectating(Player player);
 
-    void broadcast(String miniMessage, TagResolver... resolvers);
+    /**
+     * Sends a core-formatted message to everyone in the match. {@code placeholders} are alternating
+     * name/value pairs substituted for {@code <name>} in the text, e.g. {@code broadcast(text, "winners", names)}.
+     * Segment prefixes ({@code message:}, {@code title:}, {@code actionbar:}, {@code bossbar:}) route the output;
+     * unprefixed text is dropped for players.
+     */
+    void broadcast(String text, String... placeholders);
 }

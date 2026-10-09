@@ -32,7 +32,7 @@ public interface IArcadeMap {
 
     /** Raw per-map overrides set via {@code /arcade map config}; empty by default. */
     default Map<String, String> getConfigOverrides() {
-        return Map.of();
+        return java.util.Collections.emptyMap();
     }
 
     /**
@@ -70,7 +70,8 @@ public interface IArcadeMap {
         return getConfigValue(key);
     }
 
-    private MapConfigOption requireConfigOption(String key) {
+    // Java 8 has no private interface methods, so this helper is public. Addons should use getConfigValue instead.
+    default MapConfigOption requireConfigOption(String key) {
         Game game = ArcadeAPIProvider.get().getGameManager().getGame(getGameId());
         if (game != null) {
             for (MapConfigOption option : game.getMapConfigOptions()) {

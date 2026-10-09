@@ -1,6 +1,5 @@
 package org.drappula.arcadeApi.systems.game;
 
-import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import org.bukkit.entity.Player;
 import org.drappula.arcadeApi.systems.map.IArcadeMap;
 import org.jspecify.annotations.Nullable;
@@ -109,7 +108,7 @@ class IMatchDefaultsTest {
         }
 
         @Override
-        public void broadcast(String miniMessage, TagResolver... resolvers) {
+        public void broadcast(String text, String... placeholders) {
         }
     }
 

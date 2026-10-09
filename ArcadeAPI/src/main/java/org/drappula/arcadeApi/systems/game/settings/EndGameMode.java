@@ -21,12 +21,10 @@ public enum EndGameMode {
     }
 
     public static EndGameMode parseGameMode(@Nullable GameMode gm) {
-        switch (gm) {
-            case SURVIVAL -> { return SURVIVAL; }
-            case ADVENTURE -> { return ADVENTURE; }
-            case SPECTATOR -> { return SPECTATOR; }
-            case CREATIVE -> { return CREATIVE; }
-            case null -> { return DEFAULT; }
+        if (gm == null) return DEFAULT;
+        for (EndGameMode mode : values()) {
+            if (mode.gameMode == gm) return mode;
         }
+        return DEFAULT;
     }
 }

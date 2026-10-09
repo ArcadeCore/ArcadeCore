@@ -41,7 +41,7 @@ public interface Game {
     default OptionalDouble getStartCountdownSeconds() { return OptionalDouble.empty(); }
 
     /** Per-map tuning knobs this game declares; admins set values per map via {@code /arcade map config}. Empty by default. */
-    default List<MapConfigOption> getMapConfigOptions() { return List.of(); }
+    default List<MapConfigOption> getMapConfigOptions() { return java.util.Collections.emptyList(); }
 
     /**
      * Games that build their own arena (e.g. procedurally generated) can return a ready-to-use map here

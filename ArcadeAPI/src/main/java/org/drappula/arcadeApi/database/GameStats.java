@@ -13,11 +13,11 @@ public class GameStats {
     private final Map<String, Integer> other;
 
     public GameStats(UUID uuid, String gameId, int points, int wins, int losses) {
-        this(uuid, gameId, points, wins, losses, Map.of());
+        this(uuid, gameId, points, wins, losses, java.util.Collections.emptyMap());
     }
 
     public GameStats(UUID uuid, String gameId, int points, int wins, int losses, Map<String, Integer> other) {
-        this.other = Map.copyOf(other);
+        this.other = java.util.Collections.unmodifiableMap(new java.util.HashMap<>(other));
         this.uuid = uuid;
         this.gameId = gameId;
         this.points = points;

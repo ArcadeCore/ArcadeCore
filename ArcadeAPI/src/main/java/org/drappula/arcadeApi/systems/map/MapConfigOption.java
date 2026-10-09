@@ -68,12 +68,12 @@ public final class MapConfigOption {
         if (type == MapConfigType.TEXT) {
             return raw == null ? "" : raw;
         }
-        if (raw == null || raw.isBlank()) {
+        if (raw == null || raw.trim().isEmpty()) {
             throw new IllegalArgumentException(key + " requires a " + describeType() + ", got blank");
         }
         String trimmed = raw.trim();
         switch (type) {
-            case INTEGER -> {
+            case INTEGER: {
                 int value;
                 try {
                     value = Integer.parseInt(trimmed);
@@ -86,7 +86,7 @@ public final class MapConfigOption {
                 }
                 return Integer.toString(value);
             }
-            case DECIMAL -> {
+            case DECIMAL: {
                 double value;
                 try {
                     value = Double.parseDouble(trimmed);
@@ -99,21 +99,22 @@ public final class MapConfigOption {
                 }
                 return Double.toString(value);
             }
-            case BOOLEAN -> {
+            case BOOLEAN: {
                 if (trimmed.equalsIgnoreCase("true")) return "true";
                 if (trimmed.equalsIgnoreCase("false")) return "false";
                 throw new IllegalArgumentException(key + " requires true or false, got '" + raw + "'");
             }
-            default -> throw new IllegalArgumentException("Unknown type for " + key);
+            default:
+                throw new IllegalArgumentException("Unknown type for " + key);
         }
     }
 
     private String describeType() {
-        return switch (type) {
-            case INTEGER -> "whole number between " + (int) min + " and " + (int) max;
-            case DECIMAL -> "number between " + min + " and " + max;
-            case BOOLEAN -> "true or false";
-            case TEXT -> "text";
-        };
+        switch (type) {
+            case INTEGER: return "whole number between " + (int) min + " and " + (int) max;
+            case DECIMAL: return "number between " + min + " and " + max;
+            case BOOLEAN: return "true or false";
+            default: return "text";
+        }
     }
 }
