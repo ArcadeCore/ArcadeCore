@@ -15,7 +15,7 @@ Keep production code version-neutral: no Paper-only API, no Adventure/MiniMessag
 - There is no `runServer` task any more (run-paper and the Kotlin plugin were removed). For a live server use the matrix scripts in `../TestServer-matrix` (`matrix.sh` boots 1.8.8, 1.12.2, 1.16.5, 1.20.4, 1.21.4 and 26.3 with the current jars; `run-server.sh` feeds console commands over stdin) or a manual server with the jar in `plugins/`.
 - `scripts/smoke-test.sh` and `:ArcadePlugin:smokeTest` still exist but were written for the old `runServer` flow; check them before relying on them.
 - Never run Gradle in two of the four repos at once: addons include this build via `includeBuild`, and they share its `build` directory.
-- Verified: boot + command smoke on Paper 1.8.8, 1.12.2, 1.16.5, 1.20.4, 1.21.4 and 26.3 with ArcadeCore + BedrockPillars + FFA + Hub, no errors. A bot-driven full match on each version has not been done.
+- Verified: boot + command smoke on Paper 1.8.8, 1.12.2, 1.16.5, 1.20.4, 1.21.4 and 26.3 with ArcadeCore + BedrockPillars + FFA + Hub, no errors. A bot-driven FFA match (two mineflayer bots: queue, countdown, kill, win, stats via /hub top) was played to completion on Paper 1.8.8, 1.12.2, 1.16.5, 1.20.4, 1.21.4 and 26.1.2 using TestServer-matrix/match.js. Bedrock Pillars has not been played by bots.
 - No CI, no lint/format config. `org.gradle.configuration-cache/parallel/caching` are on (`gradle.properties`).
 
 ## Test-driven development (mandatory)
