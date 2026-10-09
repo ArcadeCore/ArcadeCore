@@ -140,9 +140,15 @@ public class MainCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         List<String> options = new ArrayList<String>();
         if (args.length == 1) {
-            options.addAll(ROOT);
+            // Only offer what the sender may run, like the old Brigadier tree did.
+            for (String root : ROOT) {
+                if (root.equals("start") && !sender.hasPermission("arcade.force-start")) continue;
+                if (root.equals("map") && !sender.hasPermission("arcade.map.admin")) continue;
+                options.add(root);
+            }
         } else if (args.length == 2) {
-            if (args[0].equalsIgnoreCase("start") || args[0].equalsIgnoreCase("queue")) options.addAll(gameIds());
+            if (args[0].equalsIgnoreCase("start") && sender.hasPermission("arcade.force-start")) options.addAll(gameIds());
+            else if (args[0].equalsIgnoreCase("queue")) options.addAll(gameIds());
             else if (args[0].equalsIgnoreCase("map") && sender.hasPermission("arcade.map.admin")) options.addAll(MAP);
         } else if (args[0].equalsIgnoreCase("map") && sender.hasPermission("arcade.map.admin")) {
             options.addAll(mapOptions(args));
@@ -303,16 +309,23 @@ public class MainCommand implements CommandExecutor, TabCompleter {
     }
 
     private void mapList(CommandSender sender, String gameId) {
+        // Ids go in as placeholder values (m0, g0, ...) so an id that looks like markup prints as typed.
         StringBuilder message = new StringBuilder("<aqua>Maps:</aqua>");
+        List<String> values = new ArrayList<String>();
         for (Game game : GameManager.get().getGames().values()) {
             if (gameId != null && !game.getId().equalsIgnoreCase(gameId)) continue;
             for (IArcadeMap map : MapManager.get().getMaps(game.getId())) {
-                message.append("<br><gray> - ").append(map.getId()).append(" (").append(game.getId()).append(")")
+                int n = values.size() / 4;
+                values.add("m" + n);
+                values.add(map.getId());
+                values.add("g" + n);
+                values.add(game.getId());
+                message.append("<br><gray> - <m").append(n).append("> (<g").append(n).append(">)")
                         .append(map.isEnabled() ? "" : " <red>[disabled]</red>")
                         .append(map.isInUse() ? " <yellow>[in use]</yellow>" : "");
             }
         }
-        Messages.chat(sender, message.toString());
+        Messages.chat(sender, message.toString(), values.toArray(new String[0]));
     }
 
     private void mapConfigSet(CommandSender sender, String mapId, String key, String value) {
@@ -383,13 +396,20 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             return;
         }
         StringBuilder message = new StringBuilder("<aqua>Config for <id>:</aqua>");
+        List<String> values = new ArrayList<String>(Arrays.asList("id", mapId));
+        int n = 0;
         for (MapConfigOption option : game.getMapConfigOptions()) {
             String override = map.getConfigOverrides().get(option.key());
-            message.append("<br><gray> - ").append(option.key()).append("=")
-                    .append(override != null ? override : option.defaultValue());
+            // Keys and values go in as placeholder values so text that looks like markup prints as typed.
+            message.append("<br><gray> - <k").append(n).append(">=<v").append(n).append(">");
+            values.add("k" + n);
+            values.add(option.key());
+            values.add("v" + n);
+            values.add(override != null ? override : option.defaultValue());
             if (override != null) message.append(" <yellow>[override]</yellow>");
+            n++;
         }
-        Messages.chat(sender, message.toString(), "id", mapId);
+        Messages.chat(sender, message.toString(), values.toArray(new String[0]));
     }
 
     private void mapDelete(CommandSender sender, String mapId) {
@@ -426,12 +446,9 @@ public class MainCommand implements CommandExecutor, TabCompleter {
     }
 
     private void setSpawn(CommandSender sender) {
-        if (!(sender instanceof Player)) {
-            Messages.chat(sender, "<red>Only players can set the spawn (uses your position).");
-            return;
-        }
         try {
-            DataConfig.setSpawnLocation(((Player) sender).getLocation());
+            // A console or RCON has no position, so it sets the default world's spawn (as it did with Brigadier).
+            DataConfig.setSpawnLocation(locationOf(sender));
             Messages.chat(sender, "<green>Spawn location updated.");
         } catch (Exception e) {
             Messages.chat(sender, "<red>An error occurred while trying to save spawn location. See the console for more details.");

@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Translates the small MiniMessage subset ArcadeCore uses (named colours, bold/italic/underlined/
+ * Translates the small MiniMessage subset ArcadeCore uses (named and hex colours, bold/italic/underlined/
  * strikethrough/obfuscated, reset, newline) into legacy section-sign codes, so one message string works
  * on every Minecraft version. Anything else in angle brackets is left as text.
  */
@@ -48,23 +48,57 @@ public final class LegacyText {
         }
     }
 
-    /** One open tag: either a colour (code) or a format (code). */
-    private static final class Open {
-        final String name;
-        final char code;
-        final boolean color;
+    /** The 16 legacy colours as RGB, for mapping hex colours to the nearest one. */
+    private static final int[] RGB = {
+            0x000000, 0x0000AA, 0x00AA00, 0x00AAAA, 0xAA0000, 0xAA00AA, 0xFFAA00, 0xAAAAAA,
+            0x555555, 0x5555FF, 0x55FF55, 0x55FFFF, 0xFF5555, 0xFF55FF, 0xFFFF55, 0xFFFFFF};
+    private static final String CODES = "0123456789abcdef";
 
-        Open(String name, char code, boolean color) {
-            this.name = name;
-            this.code = code;
-            this.color = color;
+    /** Colour code for a tag name: a named colour, {@code #rrggbb}, or {@code color:<either>}; 0 if it is not one. */
+    private static char colour(String name) {
+        if (name.startsWith("color:")) name = name.substring(6);
+        else if (name.startsWith("colour:")) name = name.substring(7);
+        if (name.length() == 7 && name.charAt(0) == '#') {
+            try {
+                int rgb = Integer.parseInt(name.substring(1), 16);
+                int best = 0;
+                long bestDistance = Long.MAX_VALUE;
+                for (int k = 0; k < RGB.length; k++) {
+                    long dr = ((rgb >> 16) & 255) - ((RGB[k] >> 16) & 255);
+                    long dg = ((rgb >> 8) & 255) - ((RGB[k] >> 8) & 255);
+                    long db = (rgb & 255) - (RGB[k] & 255);
+                    long distance = dr * dr + dg * dg + db * db;
+                    if (distance < bestDistance) {
+                        bestDistance = distance;
+                        best = k;
+                    }
+                }
+                return CODES.charAt(best);
+            } catch (NumberFormatException e) {
+                return 0;
+            }
+        }
+        return colorCode(name);
+    }
+
+    /** Colour and formats currently in effect. Legacy codes cannot be undone one by one, so this is re-emitted. */
+    private static final class State {
+        char colour;
+        final StringBuilder formats = new StringBuilder();
+
+        void emit(StringBuilder out) {
+            out.append(S).append('r');
+            if (colour != 0) out.append(S).append(colour);
+            for (int k = 0; k < formats.length(); k++) out.append(S).append(formats.charAt(k));
         }
     }
 
     public static String translate(String text, Map<String, String> placeholders) {
         if (text == null) return "";
         StringBuilder out = new StringBuilder();
-        List<Open> stack = new ArrayList<Open>();
+        // One entry per open tag, innermost last: the code it applied (colour or format).
+        List<String> open = new ArrayList<String>();
+        State state = new State();
         int i = 0;
         while (i < text.length()) {
             char c = text.charAt(i);
@@ -82,24 +116,27 @@ public final class LegacyText {
             } else if (name.equals("newline") || name.equals("br")) {
                 out.append('\n');
             } else if (name.equals("reset")) {
-                stack.clear();
+                open.clear();
+                state = new State();
                 out.append(S).append('r');
-            } else if (!closing && colorCode(name) != 0) {
-                stack.add(new Open(name, colorCode(name), true));
-                out.append(S).append(colorCode(name));
+            } else if (!closing && colour(name) != 0) {
+                state.colour = colour(name);
+                open.add(name);
+                // A colour code wipes formats in legacy text, so put the active formats back after it.
+                out.append(S).append(state.colour);
+                for (int k = 0; k < state.formats.length(); k++) out.append(S).append(state.formats.charAt(k));
             } else if (!closing && formatCode(name) != 0) {
-                stack.add(new Open(name, formatCode(name), false));
-                out.append(S).append(formatCode(name));
-            } else if (closing && (colorCode(name) != 0 || formatCode(name) != 0)) {
-                for (int k = stack.size() - 1; k >= 0; k--) {
-                    if (stack.get(k).name.equals(name)) {
-                        stack.remove(k);
-                        break;
-                    }
+                char code = formatCode(name);
+                if (state.formats.indexOf(String.valueOf(code)) < 0) state.formats.append(code);
+                open.add(name);
+                out.append(S).append(code);
+            } else if (closing && (colour(name) != 0 || formatCode(name) != 0 || name.equals("color") || name.equals("colour"))) {
+                if (!popTag(open, name)) {
+                    // Closing something that was never opened changes nothing.
+                } else {
+                    state = rebuild(open);
+                    state.emit(out);
                 }
-                // Legacy codes cannot be undone individually: reset, then re-apply what is still open.
-                out.append(S).append('r');
-                for (Open open : stack) out.append(S).append(open.code);
             } else {
                 out.append(c);
                 i++;
@@ -108,6 +145,35 @@ public final class LegacyText {
             i = end + 1;
         }
         return out.toString();
+    }
+
+    /** Removes the innermost open tag that the closing tag matches. */
+    private static boolean popTag(List<String> open, String closing) {
+        for (int k = open.size() - 1; k >= 0; k--) {
+            String opened = open.get(k);
+            boolean same = opened.equals(closing)
+                    || ((closing.equals("color") || closing.equals("colour")) && (opened.startsWith("color:") || opened.startsWith("colour:")))
+                    || (opened.startsWith("color:") && opened.substring(6).equals(closing))
+                    || (opened.startsWith("colour:") && opened.substring(7).equals(closing));
+            if (same) {
+                open.remove(k);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static State rebuild(List<String> open) {
+        State state = new State();
+        for (String name : open) {
+            char colourCode = colour(name);
+            if (colourCode != 0) {
+                state.colour = colourCode;
+            } else if (state.formats.indexOf(String.valueOf(formatCode(name))) < 0) {
+                state.formats.append(formatCode(name));
+            }
+        }
+        return state;
     }
 
     /** Removes legacy colour/format codes, leaving plain text. */

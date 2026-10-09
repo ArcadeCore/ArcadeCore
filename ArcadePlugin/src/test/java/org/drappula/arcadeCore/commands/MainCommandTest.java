@@ -113,12 +113,14 @@ class MainCommandTest extends ServerTest {
     }
 
     @Test
-    void setSpawnRejectsConsole() {
+    void setSpawnFromConsoleUsesTheDefaultWorldSpawn() {
+        server.addSimpleWorld("world");
         CommandSender console = mock(CommandSender.class);
 
         run(console, "setspawn");
 
-        assertTrue(received(console).contains("Only players"));
+        assertTrue(org.drappula.arcadeCore.config.DataConfig.getSpawnLocation().isPresent());
+        assertTrue(received(console).contains("Spawn location updated"));
     }
 
     @Test
@@ -266,6 +268,18 @@ class MainCommandTest extends ServerTest {
         run(sender, "map", "list");
 
         assertTrue(received(sender).contains("arena"));
+    }
+
+    @Test
+    void mapListPrintsIdsLiterallyEvenWhenTheyLookLikeMarkup() throws Exception {
+        GameManager.get().registerGame(new FakeGame());
+        MapManager.get().createMap("<red>x", "game", "X", "world");
+        CommandSender sender = admin();
+
+        run(sender, "map", "list");
+
+        // The id must come through as text, not be turned into a colour code.
+        assertTrue(received(sender).contains("<red>x"));
     }
 
     @Test
@@ -525,5 +539,24 @@ class MainCommandTest extends ServerTest {
     @Test
     void tabHidesMapSubcommandsWithoutPermission() {
         assertTrue(tab(nobody(), "map", "").isEmpty());
+    }
+
+    @Test
+    void tabHidesStartAndMapFromSendersWithoutPermission() {
+        CommandSender plain = nobody();
+
+        List<String> offered = tab(plain, "");
+
+        assertTrue(offered.contains("queue") && offered.contains("reload"));
+        assertFalse(offered.contains("start") || offered.contains("map"));
+        assertTrue(tab(admin(), "").contains("start") && tab(admin(), "").contains("map"));
+    }
+
+    @Test
+    void tabDoesNotSuggestGamesForStartWithoutPermission() {
+        GameManager.get().registerGame(new FakeGame());
+
+        assertTrue(tab(nobody(), "start", "").isEmpty());
+        assertTrue(tab(nobody(), "queue", "").contains("game"));
     }
 }

@@ -31,7 +31,7 @@ public class Match implements IMatch {
     private List<IParticipant> winnerParticipants = new ArrayList<>();
     private final List<Player> spectatingPlayers = new ArrayList<>();
     private final List<ITeam> teams = new ArrayList<>();
-    private Map<Location, Material> cageSnapshot;
+    private Map<Location, org.bukkit.block.BlockState> cageSnapshot;
 
     public Match(Game game, List<Player> players, @Nullable IArcadeMap map) {
         this.game = game;
@@ -88,11 +88,11 @@ public class Match implements IMatch {
     }
 
     /** Spawn-cage snapshot; null when no cages are up. Internal use. */
-    public Map<Location, Material> getCageSnapshotInternal() {
+    public Map<Location, org.bukkit.block.BlockState> getCageSnapshotInternal() {
         return cageSnapshot;
     }
 
-    public void setCageSnapshotInternal(Map<Location, Material> cageSnapshot) {
+    public void setCageSnapshotInternal(Map<Location, org.bukkit.block.BlockState> cageSnapshot) {
         this.cageSnapshot = cageSnapshot;
     }
 
