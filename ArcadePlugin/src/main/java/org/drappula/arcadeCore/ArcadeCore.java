@@ -28,6 +28,7 @@ public final class ArcadeCore extends JavaPlugin {
     public void onEnable() {
         instance = this;
 
+        Messages.useScreenText(new org.drappula.arcadeCore.util.XSeriesScreenText());
         setupConfig();
         connectDatabase();
         MapManager.get().load();

@@ -9,6 +9,7 @@ import java.time.Duration
 repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
+    maven("https://jitpack.io")
     maven("https://hub.spigotmc.org/nexus/content/repositories/snapshots/")
 }
 
@@ -19,6 +20,7 @@ dependencies {
     compileOnly("com.google.code.findbugs:jsr305:3.0.2")
     implementation("dev.dejvokep:boosted-yaml:1.3.7")
     implementation("dev.dejvokep:boosted-yaml-spigot:1.5")
+    implementation("com.github.cryptomorin:XSeries:13.7.1")
     implementation("org.xerial:sqlite-jdbc:3.53.2.0")
 
     implementation(project(":ArcadeAPI"))
@@ -43,6 +45,7 @@ tasks {
     shadowJar {
         // JDBC drivers register through META-INF/services; without merging, the shaded sqlite driver is invisible.
         mergeServiceFiles()
+        relocate("com.cryptomorin.xseries", "org.drappula.arcadeCore.libs.xseries")
     }
 
     test {
