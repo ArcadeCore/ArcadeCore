@@ -374,11 +374,17 @@ class MatchManagerTest extends ServerTest {
         Match match = new Match(game, new ArrayList<>(List.of(first, second)), null);
         GameManager.get().populateMatch(match);
 
-        // No scheduler ticks: the title must fire synchronously with end().
-        MatchManager.get().endMatch(match);
+        org.drappula.arcadeApi.message.ScreenText screen = mock(org.drappula.arcadeApi.message.ScreenText.class);
+        org.drappula.arcadeApi.message.Messages.useScreenText(screen);
+        try {
+            // No scheduler ticks: the title must fire synchronously with end().
+            MatchManager.get().endMatch(match);
 
-        verify(first).sendTitlePart(eq(net.kyori.adventure.title.TitlePart.TITLE), any());
-        verify(second).sendTitlePart(eq(net.kyori.adventure.title.TitlePart.TITLE), any());
+            verify(screen).title(eq(first), anyString(), any(), anyInt(), anyInt(), anyInt());
+            verify(screen).title(eq(second), anyString(), any(), anyInt(), anyInt(), anyInt());
+        } finally {
+            org.drappula.arcadeApi.message.Messages.useScreenText(null);
+        }
     }
 
     @Test

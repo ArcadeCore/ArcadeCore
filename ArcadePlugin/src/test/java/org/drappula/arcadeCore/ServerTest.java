@@ -43,7 +43,7 @@ public abstract class ServerTest {
         dataFolder = Files.createTempDirectory("arcade-test");
         coreMock = mock(ArcadeCore.class);
         when(coreMock.getDataFolder()).thenReturn(dataFolder.toFile());
-        when(coreMock.getSLF4JLogger()).thenReturn(mock(net.kyori.adventure.text.logger.slf4j.ComponentLogger.class));
+        when(coreMock.getLogger()).thenReturn(mock(java.util.logging.Logger.class));
         when(coreMock.getResource(anyString())).thenAnswer(invocation -> {
             String name = invocation.getArgument(0);
             InputStream stream = ServerTest.class.getResourceAsStream("/" + name);

@@ -56,10 +56,10 @@ class UserDataManagerTest extends ServerTest {
             UUID uuid = UUID.randomUUID();
 
             assertThrows(RuntimeException.class, () -> UserDataManager.getOrCreate(uuid, "name"));
-            verify(core().getSLF4JLogger(), atLeastOnce()).error(
+            verify(core().getLogger(), atLeastOnce()).log(
+                    org.mockito.ArgumentMatchers.any(java.util.logging.Level.class),
                     org.mockito.ArgumentMatchers.anyString(),
-                    org.mockito.ArgumentMatchers.any(),
-                    org.mockito.ArgumentMatchers.any());
+                    org.mockito.ArgumentMatchers.<Throwable>any());
         } finally {
             org.drappula.arcadeCore.database.TestDb.disconnect();
             org.drappula.arcadeCore.database.TestDb.connect();

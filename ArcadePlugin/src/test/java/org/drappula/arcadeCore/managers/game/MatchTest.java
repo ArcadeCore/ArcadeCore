@@ -160,9 +160,9 @@ class MatchTest extends ServerTest {
 
         match.broadcast("message:hello");
 
-        verify(first, times(1)).sendRichMessage(eq("hello"), any());
-        verify(second, times(1)).sendRichMessage(eq("hello"), any());
-        verify(spectator, times(1)).sendRichMessage(eq("hello"), any());
+        verify(first, times(1)).sendMessage("hello");
+        verify(second, times(1)).sendMessage("hello");
+        verify(spectator, times(1)).sendMessage("hello");
     }
 
     @Test

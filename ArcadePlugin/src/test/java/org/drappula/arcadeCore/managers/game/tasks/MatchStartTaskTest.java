@@ -14,6 +14,8 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -72,14 +74,18 @@ class MatchStartTaskTest extends ServerTest {
         match.getAliveParticipants().stream()
                 .filter(p -> p.getPlayer() == eliminated)
                 .findFirst().orElseThrow().eliminate();
-        new MatchStartTask(match).runTaskTimer(core(), 0, 20);
+        org.drappula.arcadeApi.message.ScreenText screen = mock(org.drappula.arcadeApi.message.ScreenText.class);
+        org.drappula.arcadeApi.message.Messages.useScreenText(screen);
+        try {
+            new MatchStartTask(match).runTaskTimer(core(), 0, 20);
 
-        server.getScheduler().performTicks(20);
+            server.getScheduler().performTicks(20);
 
-        verify(alive, times(1)).sendTitlePart(
-                eq(net.kyori.adventure.title.TitlePart.TITLE), any());
-        verify(eliminated, never()).sendTitlePart(
-                eq(net.kyori.adventure.title.TitlePart.TITLE), any());
+            verify(screen, times(1)).title(eq(alive), anyString(), any(), anyInt(), anyInt(), anyInt());
+            verify(screen, never()).title(eq(eliminated), anyString(), any(), anyInt(), anyInt(), anyInt());
+        } finally {
+            org.drappula.arcadeApi.message.Messages.useScreenText(null);
+        }
         org.drappula.arcadeCore.managers.game.GameManager.get().depopulateMatch(match);
     }
 }
