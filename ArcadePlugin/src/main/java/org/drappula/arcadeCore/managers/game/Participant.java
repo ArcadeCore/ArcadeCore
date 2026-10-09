@@ -1,5 +1,6 @@
 package org.drappula.arcadeCore.managers.game;
 
+import org.drappula.arcadeCore.util.Events;
 import org.bukkit.entity.Player;
 import org.drappula.arcadeApi.database.UserData;
 import org.drappula.arcadeApi.events.ParticipantEliminateEvent;
@@ -10,7 +11,7 @@ import org.drappula.arcadeApi.systems.game.ITeam;
 import org.drappula.arcadeApi.systems.game.MatchState;
 import org.drappula.arcadeCore.managers.ProfileManager;
 import org.drappula.arcadeCore.managers.UserDataManager;
-import org.jspecify.annotations.Nullable;
+import javax.annotation.Nullable;
 
 public class Participant implements IParticipant {
     private final Player player;
@@ -74,7 +75,7 @@ public class Participant implements IParticipant {
         if (eliminated || getMatch().getState() == MatchState.ENDING || getMatch().getState() == MatchState.ENDED)
             return;
         ParticipantEliminateEvent event = new ParticipantEliminateEvent(this, killer);
-        event.callEvent();
+        Events.call(event);
         if (event.isCancelled()) return;
         eliminated = true;
         MatchManager.get().eliminateParticipant(this);

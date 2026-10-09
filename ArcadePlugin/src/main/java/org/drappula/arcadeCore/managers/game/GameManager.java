@@ -1,5 +1,6 @@
 package org.drappula.arcadeCore.managers.game;
 
+import org.drappula.arcadeCore.util.Immutable;
 import org.drappula.arcadeApi.systems.game.Game;
 import org.drappula.arcadeApi.systems.game.IGameManager;
 import org.drappula.arcadeApi.systems.game.IMatch;
@@ -36,7 +37,7 @@ public class GameManager implements IGameManager {
 
     @Override
     public Collection<Game> getRegisteredGames() {
-        return List.copyOf(games.values());
+        return Immutable.copy(games.values());
     }
 
     @Override
@@ -52,7 +53,7 @@ public class GameManager implements IGameManager {
     }
 
     public void registerGame(Game game) {
-        if (game.getId().isBlank() || game.getId().contains(" ")) throw new IllegalArgumentException("Tried to register game with invalid ID (" + game.getId() + ")");
+        if (game.getId().trim().isEmpty() || game.getId().contains(" ")) throw new IllegalArgumentException("Tried to register game with invalid ID (" + game.getId() + ")");
         games.put(key(game.getId()), game);
         game.onRegister();
         MapManager.get().backfillDefaultConfig(key(game.getId()));
@@ -97,7 +98,7 @@ public class GameManager implements IGameManager {
         }
     }
     public void reload() {
-        for (Game game : List.copyOf(games.values())) {
+        for (Game game : Immutable.copy(games.values())) {
             try {
                 game.onUnregister();
             } catch (Exception ignored) {

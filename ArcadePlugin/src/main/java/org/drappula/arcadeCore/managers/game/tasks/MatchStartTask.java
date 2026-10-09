@@ -1,6 +1,5 @@
 package org.drappula.arcadeCore.managers.game.tasks;
 
-import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.drappula.arcadeApi.systems.game.MatchState;
 import org.drappula.arcadeApi.systems.game.IMatch;
@@ -33,7 +32,7 @@ public class MatchStartTask extends BukkitRunnable {
         }
         for (IParticipant participant : match.getAliveParticipants()) {
             MessageUtil.sendMessage(participant.getPlayer(),
-                    MessagesConfig.get().getString("countdown-message-" + (timeLeft == 1 ? "singular" : "plural")), Placeholder.unparsed("time", String.valueOf((int) timeLeft)));
+                    MessagesConfig.get().getString("countdown-message-" + (timeLeft == 1 ? "singular" : "plural")), "time", String.valueOf((int) timeLeft));
         }
         timeLeft--;
     }

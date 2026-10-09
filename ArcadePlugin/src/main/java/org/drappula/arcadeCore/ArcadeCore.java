@@ -1,9 +1,9 @@
 package org.drappula.arcadeCore;
 
-import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.drappula.arcadeApi.ArcadeAPI;
 import org.drappula.arcadeApi.ArcadeAPIProvider;
+import org.drappula.arcadeApi.message.Messages;
 import org.drappula.arcadeCore.api.ArcadeAPIImpl;
 import org.drappula.arcadeCore.commands.MainCommand;
 import org.drappula.arcadeCore.config.DataConfig;
@@ -52,7 +52,9 @@ public final class ArcadeCore extends JavaPlugin {
         }
     }
     private void registerCommands() {
-        this.getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, commands -> commands.registrar().register(MainCommand.get()));
+        MainCommand command = new MainCommand();
+        getCommand("arcade").setExecutor(command);
+        getCommand("arcade").setTabCompleter(command);
     }
     private void registerListeners() {
         getServer().getPluginManager().registerEvents(new LobbyListener(), this);

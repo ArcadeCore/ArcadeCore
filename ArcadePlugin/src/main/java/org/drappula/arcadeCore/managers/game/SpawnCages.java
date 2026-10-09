@@ -33,7 +33,8 @@ public final class SpawnCages {
 
     /** Restores caged cells to their pre-build types. Idempotent. */
     public static void clear(IMatch match) {
-        if (!(match instanceof Match concrete)) return;
+        if (!(match instanceof Match)) return;
+        Match concrete = (Match) match;
         Map<Location, Material> snapshot = concrete.getCageSnapshotInternal();
         concrete.setCageSnapshotInternal(null);
         if (snapshot == null) return;

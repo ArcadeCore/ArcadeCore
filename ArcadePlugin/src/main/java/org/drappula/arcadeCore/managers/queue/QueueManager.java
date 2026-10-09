@@ -1,5 +1,8 @@
 package org.drappula.arcadeCore.managers.queue;
 
+import org.drappula.arcadeCore.util.Events;
+import org.drappula.arcadeCore.util.Immutable;
+import java.util.Collections;
 import org.bukkit.entity.Player;
 import org.drappula.arcadeApi.events.QueueEnterEvent;
 import org.drappula.arcadeApi.events.QueueLeaveEvent;
@@ -14,7 +17,7 @@ import org.drappula.arcadeCore.managers.game.GameManager;
 import org.drappula.arcadeCore.managers.game.MatchManager;
 import org.drappula.arcadeCore.managers.queue.tasks.QueueCountdownTask;
 import org.drappula.arcadeCore.util.MessageUtil;
-import org.jspecify.annotations.Nullable;
+import javax.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -51,7 +54,7 @@ public class QueueManager implements IQueueManager {
             leaveQueue(player);
         }
         QueueEnterEvent event = new QueueEnterEvent(player, game);
-        event.callEvent();
+        Events.call(event);
         if (event.isCancelled()) return JoinResult.EVENT_DENIED;
 
         List<Player> queue = queues.computeIfAbsent(key(game.getId()), k -> new ArrayList<>());
@@ -64,14 +67,14 @@ public class QueueManager implements IQueueManager {
     public JoinResult joinQueue(Collection<Player> players, Game game) {
         if (players.isEmpty()) return JoinResult.EVENT_DENIED;
         if (!game.isEnabled()) return JoinResult.GAME_DISABLED;
-        List<Player> group = List.copyOf(players);
+        List<Player> group = Immutable.copy(players);
         for (Player player : group) {
             if (isQueued(player)) return JoinResult.ALREADY_QUEUED;
             if (isInAnyMatch(player)) return JoinResult.ALREADY_IN_MATCH;
         }
         for (Player player : group) {
             QueueEnterEvent event = new QueueEnterEvent(player, game);
-            event.callEvent();
+            Events.call(event);
             if (event.isCancelled()) return JoinResult.EVENT_DENIED;
         }
         List<Player> queue = queues.computeIfAbsent(key(game.getId()), k -> new ArrayList<>());
@@ -101,7 +104,7 @@ public class QueueManager implements IQueueManager {
                 removed = true;
                 Game game = GameManager.get().getGame(entry.getKey());
                 if (game != null) {
-                    new QueueLeaveEvent(player, game, reason).callEvent();
+                    Events.call(new QueueLeaveEvent(player, game, reason));
                     if (queue.size() < game.getMinPlayers()) {
                         cancelCountdown(game);
                     }
@@ -119,7 +122,7 @@ public class QueueManager implements IQueueManager {
         Game resolved = GameManager.get().getGame(game.getId());
         if (resolved != null) {
             for (Player player : players) {
-                new QueueLeaveEvent(player, resolved, QueueLeaveReason.MATCH_START).callEvent();
+                Events.call(new QueueLeaveEvent(player, resolved, QueueLeaveReason.MATCH_START));
             }
         }
     }
@@ -133,18 +136,18 @@ public class QueueManager implements IQueueManager {
         cancelCountdown(game);
         if (queue == null) return;
         for (Player player : queue) {
-            new QueueLeaveEvent(player, game, QueueLeaveReason.GAME_UNREGISTERED).callEvent();
+            Events.call(new QueueLeaveEvent(player, game, QueueLeaveReason.GAME_UNREGISTERED));
         }
     }
 
     @Override
     public List<Player> getQueue(Game game) {
-        return List.copyOf(queues.getOrDefault(key(game.getId()), List.of()));
+        return Immutable.copy(queues.getOrDefault(key(game.getId()), Collections.emptyList()));
     }
 
     @Override
     public int getQueueSize(Game game) {
-        return queues.getOrDefault(key(game.getId()), List.of()).size();
+        return queues.getOrDefault(key(game.getId()), Collections.emptyList()).size();
     }
 
     @Override
@@ -220,7 +223,7 @@ public class QueueManager implements IQueueManager {
 
     /** Starts a match immediately if the queue is full, or (re)starts the countdown at the minimum. */
     private void maybeStartCountdown(Game game) {
-        List<Player> queue = queues.getOrDefault(key(game.getId()), List.of());
+        List<Player> queue = queues.getOrDefault(key(game.getId()), Collections.emptyList());
         if (queue.size() >= game.getMaxPlayers()) {
             startQueuedMatch(game);
         } else {
@@ -230,7 +233,7 @@ public class QueueManager implements IQueueManager {
 
     /** (Re)starts the countdown if the queue is at the minimum and none is running. Never starts a match directly. */
     private void startCountdownIfNeeded(Game game) {
-        List<Player> queue = queues.getOrDefault(key(game.getId()), List.of());
+        List<Player> queue = queues.getOrDefault(key(game.getId()), Collections.emptyList());
         if (queue.size() >= game.getMinPlayers() && !countdowns.containsKey(key(game.getId()))) {
             QueueCountdownTask task = new QueueCountdownTask(game);
             task.runTaskTimer(ArcadeCore.get(), 0, 20);

@@ -1,5 +1,6 @@
 package org.drappula.arcadeCore.listeners;
 
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
@@ -20,7 +21,7 @@ import org.drappula.arcadeCore.managers.impl.Profile;
 import org.drappula.arcadeCore.managers.queue.QueueManager;
 import org.drappula.arcadeCore.util.PlayerUtil;
 
-import java.util.List;
+import java.util.ArrayList;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -34,15 +35,17 @@ public class LobbyListener implements Listener {
 
     @EventHandler
     public void onDamage(EntityDamageEvent e) {
-        if (e.getEntity() instanceof Player victim && !inMatch(victim)) {
+        if (e.getEntity() instanceof Player && !inMatch((Player) e.getEntity())) {
             e.setCancelled(true);
             return;
         }
         Player attacker = null;
-        if (e instanceof EntityDamageByEntityEvent byEntity) {
-            if (byEntity.getDamager() instanceof Player direct) attacker = direct;
-            else if (byEntity.getDamager() instanceof Projectile projectile
-                    && projectile.getShooter() instanceof Player shooting) attacker = shooting;
+        if (e instanceof EntityDamageByEntityEvent) {
+            Entity damager = ((EntityDamageByEntityEvent) e).getDamager();
+            if (damager instanceof Player) attacker = (Player) damager;
+            else if (damager instanceof Projectile && ((Projectile) damager).getShooter() instanceof Player) {
+                attacker = (Player) ((Projectile) damager).getShooter();
+            }
         }
         if (attacker != null && !inMatch(attacker)) {
             e.setCancelled(true);
@@ -61,7 +64,7 @@ public class LobbyListener implements Listener {
 
     @EventHandler
     public void onHunger(FoodLevelChangeEvent e) {
-        if (e.getEntity() instanceof Player player && !inMatch(player)) {
+        if (e.getEntity() instanceof Player && !inMatch((Player) e.getEntity())) {
             e.setCancelled(true);
         }
     }
@@ -78,7 +81,7 @@ public class LobbyListener implements Listener {
         if (match.isPresent()) {
             IMatch found = match.get();
             // Eliminate the player from any match they're still alive in (copy: eliminate() mutates the list)
-            for (IParticipant participant : List.copyOf(found.getAliveParticipants())) {
+            for (IParticipant participant : new ArrayList<>(found.getAliveParticipants())) {
                 if (participant.getPlayer().getUniqueId().equals(uuid) && !participant.isEliminated()) {
                     participant.eliminate();
                 }

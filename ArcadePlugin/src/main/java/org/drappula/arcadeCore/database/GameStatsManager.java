@@ -1,5 +1,8 @@
 package org.drappula.arcadeCore.database;
 
+import org.drappula.arcadeCore.util.Immutable;
+import java.util.Collections;
+import org.drappula.arcadeCore.util.Log;
 import org.drappula.arcadeApi.database.GameStats;
 import org.drappula.arcadeApi.database.IGameStatsManager;
 import org.drappula.arcadeApi.systems.game.IMatch;
@@ -79,7 +82,7 @@ public class GameStatsManager implements IGameStatsManager {
                 }
             }
         } catch (SQLException e) {
-            ArcadeCore.get().getSLF4JLogger().error("Failed to record match result for game {}", match.getGame().getId(), e);
+            Log.error("Failed to record match result for game {}", match.getGame().getId(), e);
         }
     }
 
@@ -98,14 +101,14 @@ public class GameStatsManager implements IGameStatsManager {
     }
 
     private static Map<String, Integer> parseOther(String json) {
-        if (json == null || json.isBlank()) return Map.of();
+        if (json == null || json.trim().isEmpty()) return Collections.emptyMap();
         try {
             Map<String, Integer> out = new LinkedHashMap<>();
-            com.google.gson.JsonObject obj = com.google.gson.JsonParser.parseString(json).getAsJsonObject();
+            com.google.gson.JsonObject obj = new com.google.gson.JsonParser().parse(json).getAsJsonObject();
             obj.entrySet().forEach(e -> out.put(e.getKey(), e.getValue().getAsInt()));
             return out;
         } catch (RuntimeException e) {
-            return Map.of();
+            return Collections.emptyMap();
         }
     }
 
@@ -124,7 +127,7 @@ public class GameStatsManager implements IGameStatsManager {
                 }
             }
         }
-        return List.copyOf(top);
+        return Immutable.copy(top);
     }
 
     @Override
@@ -182,7 +185,7 @@ public class GameStatsManager implements IGameStatsManager {
                 }
             }
         }
-        return List.copyOf(top);
+        return Immutable.copy(top);
     }
 
     @Override

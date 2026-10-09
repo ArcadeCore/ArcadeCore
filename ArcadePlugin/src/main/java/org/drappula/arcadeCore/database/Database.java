@@ -12,6 +12,12 @@ public class Database {
 
     public static void connect() throws SQLException {
         ArcadeCore.get().getDataFolder().mkdirs();
+        try {
+            // Explicit load: DriverManager's service lookup does not see drivers inside a plugin classloader on old servers.
+            Class.forName("org.sqlite.JDBC");
+        } catch (ClassNotFoundException e) {
+            throw new SQLException("SQLite driver is missing from the plugin jar", e);
+        }
         connection = DriverManager.getConnection(
                 "jdbc:sqlite:" + ArcadeCore.get().getDataFolder().getAbsolutePath() + "/database.db");
         try (Statement pragmaStmt = connection.createStatement()) {

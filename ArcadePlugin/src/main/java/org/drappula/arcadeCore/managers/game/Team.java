@@ -1,5 +1,6 @@
 package org.drappula.arcadeCore.managers.game;
 
+import org.drappula.arcadeCore.util.Immutable;
 import org.drappula.arcadeApi.systems.game.IMatch;
 import org.drappula.arcadeApi.systems.game.IParticipant;
 import org.drappula.arcadeApi.systems.game.ITeam;
@@ -40,7 +41,7 @@ public class Team implements ITeam {
 
     @Override
     public List<IParticipant> getMembers() {
-        return List.copyOf(members);
+        return Immutable.copy(members);
     }
 
     @Override
@@ -49,6 +50,6 @@ public class Team implements ITeam {
         for (IParticipant member : members) {
             if (!member.isEliminated()) alive.add(member);
         }
-        return List.copyOf(alive);
+        return Immutable.copy(alive);
     }
 }

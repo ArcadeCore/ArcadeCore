@@ -1,10 +1,11 @@
 package org.drappula.arcadeCore.managers.map;
 
+import org.drappula.arcadeCore.util.Immutable;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.drappula.arcadeApi.systems.map.IArcadeMap;
-import org.jspecify.annotations.Nullable;
+import javax.annotation.Nullable;
 
 import java.util.HashMap;
 import java.util.List;
@@ -55,7 +56,7 @@ public class ArcadeMap implements IArcadeMap {
         this.inUse = inUse;
     }
     public List<Location> getSpawnPoints() {
-        return List.copyOf(spawnPoints);
+        return Immutable.copy(spawnPoints);
     }
 
     /** Internal mutable view for spawn administration. */
@@ -70,7 +71,7 @@ public class ArcadeMap implements IArcadeMap {
 
     @Override
     public Map<String, String> getConfigOverrides() {
-        return Map.copyOf(config);
+        return java.util.Collections.unmodifiableMap(new java.util.HashMap<>(config));
     }
 
     @Override

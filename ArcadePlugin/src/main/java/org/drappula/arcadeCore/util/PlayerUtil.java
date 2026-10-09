@@ -3,8 +3,6 @@ package org.drappula.arcadeCore.util;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
-import org.bukkit.attribute.Attribute;
-import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Player;
 import org.drappula.arcadeCore.config.DataConfig;
 import org.drappula.arcadeCore.config.MainConfig;
@@ -32,8 +30,8 @@ public class PlayerUtil {
     }
 
     public static void resetPlayerState(Player player, GameMode gameMode, boolean flying) {
-        AttributeInstance maxHealth = player.getAttribute(Attribute.MAX_HEALTH);
-        player.setHealth(maxHealth == null ? 20 : maxHealth.getValue());
+        // getMaxHealth is deprecated on new servers but is the one call that exists from 1.8 to current.
+        player.setHealth(player.getMaxHealth());
         player.setGameMode(gameMode);
         player.setAllowFlight(flying);
         player.setFlying(flying);

@@ -1,5 +1,7 @@
 package org.drappula.arcadeCore.managers.map;
 
+import org.drappula.arcadeCore.util.Immutable;
+import org.drappula.arcadeCore.util.Log;
 import org.bukkit.Location;
 import org.drappula.arcadeApi.systems.game.Game;
 import org.drappula.arcadeApi.systems.map.IArcadeMap;
@@ -28,7 +30,7 @@ public class MapManager implements IMapManager {
         try {
             maps.addAll(MapDataManager.loadAll());
         } catch (SQLException e) {
-            ArcadeCore.get().getSLF4JLogger().error("Failed to load maps from the database", e);
+            Log.error("Failed to load maps from the database", e);
         }
     }
 
@@ -37,12 +39,12 @@ public class MapManager implements IMapManager {
         for (ArcadeMap map : maps) {
             if (map.getGameId().equalsIgnoreCase(gameId)) result.add(map);
         }
-        return List.copyOf(result);
+        return Immutable.copy(result);
     }
 
     @Override
     public List<IArcadeMap> getAllMaps() {
-        return List.copyOf(new ArrayList<IArcadeMap>(maps));
+        return Immutable.copy(new ArrayList<IArcadeMap>(maps));
     }
 
     @Override
@@ -51,7 +53,7 @@ public class MapManager implements IMapManager {
         for (ArcadeMap map : maps) {
             if (map.getGameId().equalsIgnoreCase(gameId) && map.isAvailable()) result.add(map);
         }
-        return List.copyOf(result);
+        return Immutable.copy(result);
     }
 
     public ArcadeMap getMap(String mapId) {
@@ -68,7 +70,7 @@ public class MapManager implements IMapManager {
                 try {
                     MapDataManager.setInUse(map.getId(), true);
                 } catch (SQLException e) {
-                    ArcadeCore.get().getSLF4JLogger().error("Failed to persist in-use flag for map {}", map.getId(), e);
+                    Log.error("Failed to persist in-use flag for map {}", map.getId(), e);
                 }
                 return Optional.of(map);
             }
@@ -84,7 +86,7 @@ public class MapManager implements IMapManager {
         try {
             MapDataManager.setInUse(tracked.getId(), false);
         } catch (SQLException e) {
-            ArcadeCore.get().getSLF4JLogger().error("Failed to persist in-use flag for map {}", tracked.getId(), e);
+            Log.error("Failed to persist in-use flag for map {}", tracked.getId(), e);
         }
     }
 
@@ -93,7 +95,7 @@ public class MapManager implements IMapManager {
         try {
             MapDataManager.releaseAll();
         } catch (SQLException e) {
-            ArcadeCore.get().getSLF4JLogger().error("Failed to release maps in the database", e);
+            Log.error("Failed to release maps in the database", e);
         }
     }
 
@@ -113,7 +115,7 @@ public class MapManager implements IMapManager {
             try {
                 ensureDefaultConfig(map.getId());
             } catch (SQLException e) {
-                ArcadeCore.get().getSLF4JLogger().error("Failed to backfill config for map {}", map.getId(), e);
+                Log.error("Failed to backfill config for map {}", map.getId(), e);
             }
         }
     }

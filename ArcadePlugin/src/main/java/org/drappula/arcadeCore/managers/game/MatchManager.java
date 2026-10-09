@@ -1,6 +1,9 @@
 package org.drappula.arcadeCore.managers.game;
 
-import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import org.drappula.arcadeCore.util.Events;
+import org.drappula.arcadeCore.util.Immutable;
+import java.util.Collections;
+import org.drappula.arcadeCore.util.Log;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -22,7 +25,7 @@ import org.drappula.arcadeCore.managers.map.MapManager;
 import org.drappula.arcadeCore.managers.world.ArenaWorldManager;
 import org.drappula.arcadeCore.util.MessageUtil;
 import org.drappula.arcadeCore.util.PlayerUtil;
-import org.jspecify.annotations.Nullable;
+import javax.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -44,7 +47,7 @@ public class MatchManager implements IMatchManager {
 
     public List<IMatch> getMatchesForGame(String gameId) {
         List<IMatch> found = GameManager.get().getMatches().get(gameId.toLowerCase());
-        return found == null ? List.of() : List.copyOf(found);
+        return found == null ? Collections.emptyList() : Immutable.copy(found);
     }
 
     public List<IMatch> getMatchesForGame(Game game) {
@@ -57,7 +60,7 @@ public class MatchManager implements IMatchManager {
         for (List<IMatch> matches : GameManager.get().getMatches().values()) {
             all.addAll(matches);
         }
-        return List.copyOf(all);
+        return Immutable.copy(all);
     }
 
     @Override
@@ -90,7 +93,7 @@ public class MatchManager implements IMatchManager {
         MatchState oldState = match.getState();
         if (oldState == newState) return;
         match.setState(newState);
-        new MatchStateChangeEvent(match, oldState, newState).callEvent();
+        Events.call(new MatchStateChangeEvent(match, oldState, newState));
     }
 
     public @Nullable Match startMatch(Game game, List<Player> players) {
@@ -108,14 +111,14 @@ public class MatchManager implements IMatchManager {
         if (map == null) {
             ArenaWorldManager.get().destroy(arenaWorld);
             Optional<IArcadeMap> acquiredMap = MapManager.get().acquireMap(game.getId());
-            if (acquiredMap.isEmpty()) {
-                ArcadeCore.get().getSLF4JLogger().warn("No available map to start a match for game {}", game.getId());
+            if (!acquiredMap.isPresent()) {
+                Log.warn("No available map to start a match for game {}", game.getId());
                 return null;
             }
             map = acquiredMap.get();
         }
         if (map.getSpawnPoints().size() < players.size()) {
-            ArcadeCore.get().getSLF4JLogger().warn("Map {} does not have enough spawn points for game {} ({} needed, {} available)",
+            Log.warn("Map {} does not have enough spawn points for game {} ({} needed, {} available)",
                     map.getId(), game.getId(), players.size(), map.getSpawnPoints().size());
             MapManager.get().releaseMap(map);
             ArenaWorldManager.get().destroy(arenaWorld);
@@ -124,7 +127,7 @@ public class MatchManager implements IMatchManager {
         Match match = new Match(game, players, map);
         GameManager.get().populateMatch(match);
         MatchStartEvent startEvent = new MatchStartEvent(match);
-        startEvent.callEvent();
+        Events.call(startEvent);
         if (startEvent.isCancelled()) {
             GameManager.get().depopulateMatch(match);
             MapManager.get().releaseMap(map);
@@ -146,7 +149,7 @@ public class MatchManager implements IMatchManager {
     public void endMatch(IMatch match) {
         if (match.getState() == MatchState.ENDING || match.getState() == MatchState.ENDED) return;
         MatchEndEvent event = new MatchEndEvent(match);
-        event.callEvent();
+        Events.call(event);
         if (event.isCancelled()) return;
         setState(match, MatchState.ENDING);
         SpawnCages.clear(match);
@@ -156,15 +159,16 @@ public class MatchManager implements IMatchManager {
                     .map(winner -> winner.getPlayer().getName())
                     .collect(Collectors.joining(", "));
             match.broadcast(MessagesConfig.get().getString("match-won"),
-                    Placeholder.unparsed("winners", winners));
+                    "winners", winners);
         }
         new MatchEndTask(match).runTaskTimer(ArcadeCore.get(), 0, 20);
     }
 
     public void eliminateParticipant(IParticipant participant) {
-        if (participant instanceof Participant impl) impl.setEliminated(true);
+        if (participant instanceof Participant) ((Participant) participant).setEliminated(true);
         IMatch match = participant.getMatch();
-        if (match instanceof Match concrete) {
+        if (match instanceof Match) {
+            Match concrete = (Match) match;
             concrete.getActiveParticipants().remove(participant);
             concrete.getEliminatedParticipantsInternal().add(participant);
             if (!concrete.getSpectatingPlayersInternal().contains(participant.getPlayer())) {
@@ -183,7 +187,7 @@ public class MatchManager implements IMatchManager {
         participant.getPlayer().setFlying(fly);
 
         for (IParticipant remaining : match.getAliveParticipants()) {
-            MessageUtil.sendMessage(remaining.getPlayer(), MessagesConfig.get().getString("participant-eliminated"), Placeholder.unparsed("participant", participant.getPlayer().getName()));
+            MessageUtil.sendMessage(remaining.getPlayer(), MessagesConfig.get().getString("participant-eliminated"), "participant", participant.getPlayer().getName());
         }
     }
 }

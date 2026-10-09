@@ -1,5 +1,6 @@
 package org.drappula.arcadeCore.database;
 
+import org.drappula.arcadeCore.util.Log;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -27,7 +28,7 @@ public class MapDataManager {
                 String mapId = mapRows.getString("map_id");
                 World world = Bukkit.getWorld(mapRows.getString("world"));
                 if (world == null) {
-                    ArcadeCore.get().getSLF4JLogger().warn("Skipping map {} because its world ({}) isn't loaded", mapId, mapRows.getString("world"));
+                    Log.warn("Skipping map {} because its world ({}) isn't loaded", mapId, mapRows.getString("world"));
                     continue;
                 }
                 worldByMap.put(mapId, world);

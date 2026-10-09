@@ -1,7 +1,7 @@
 package org.drappula.arcadeCore.managers.world;
 
+import org.drappula.arcadeCore.util.Log;
 import org.bukkit.Bukkit;
-import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
 import org.bukkit.entity.Player;
@@ -11,7 +11,7 @@ import org.drappula.arcadeApi.systems.map.IArcadeMap;
 import org.drappula.arcadeCore.ArcadeCore;
 import org.drappula.arcadeCore.managers.game.MatchManager;
 import org.drappula.arcadeCore.util.PlayerUtil;
-import org.jspecify.annotations.Nullable;
+import javax.annotation.Nullable;
 
 import java.io.File;
 import java.io.IOException;
@@ -47,7 +47,7 @@ public class ArenaWorldManager {
     public World create(String gameId) {
         String safe = gameId.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]", "-");
         String name = PREFIX + safe + "-" + UUID.randomUUID().toString().substring(0, 8);
-        WorldCreator creator = WorldCreator.ofNameAndKey(name, new NamespacedKey("arcade", name))
+        WorldCreator creator = new WorldCreator(name)
                 .environment(World.Environment.NORMAL)
                 .generateStructures(false)
                 .generator(new VoidChunkGenerator());
@@ -140,11 +140,11 @@ public class ArenaWorldManager {
         try {
             unloaded = Bukkit.unloadWorld(world, false);
         } catch (RuntimeException e) {
-            ArcadeCore.get().getSLF4JLogger().warn("Could not unload arena world {}", name, e);
+            Log.warn("Could not unload arena world {}", name, e);
             return;
         }
         if (!unloaded) {
-            ArcadeCore.get().getSLF4JLogger().warn("Could not unload arena world {}", name);
+            Log.warn("Could not unload arena world {}", name);
             return;
         }
         deleteFolder(folder, name);
@@ -155,7 +155,7 @@ public class ArenaWorldManager {
         try (Stream<java.nio.file.Path> walk = Files.walk(folder.toPath())) {
             walk.sorted(Comparator.reverseOrder()).forEach(path -> path.toFile().delete());
         } catch (IOException e) {
-            ArcadeCore.get().getSLF4JLogger().warn("Could not delete arena world folder {}", folder, e);
+            Log.warn("Could not delete arena world folder {}", folder, e);
         }
     }
 }

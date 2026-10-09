@@ -24,7 +24,7 @@ public class MatchListener implements Listener {
             return;
         }
         Optional<IMatch> found = MatchManager.get().getMatch(event.getPlayer());
-        if (found.isEmpty()) return;
+        if (!found.isPresent()) return;
         IMatch match = found.get();
         if (match.getState() != MatchState.STARTING) return;
         if (!match.getGame().getMatchStartSettings().isMovementFrozen()) return;

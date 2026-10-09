@@ -1,7 +1,6 @@
 package org.drappula.arcadeCore.managers.game;
 
-import net.kyori.adventure.text.minimessage.MiniMessage;
-import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
+import org.drappula.arcadeCore.util.Immutable;
 import org.bukkit.entity.Player;
 import org.drappula.arcadeApi.systems.game.Game;
 import org.drappula.arcadeApi.systems.game.IMatch;
@@ -11,7 +10,7 @@ import org.drappula.arcadeApi.systems.game.MatchState;
 import org.drappula.arcadeApi.systems.game.settings.TeamSettings;
 import org.drappula.arcadeApi.systems.map.IArcadeMap;
 import org.drappula.arcadeCore.util.MessageUtil;
-import org.jspecify.annotations.Nullable;
+import javax.annotation.Nullable;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -110,7 +109,7 @@ public class Match implements IMatch {
     public List<IParticipant> getParticipants() {
         List<IParticipant> all = new ArrayList<>(participants);
         all.addAll(eliminatedParticipants);
-        return List.copyOf(all);
+        return Immutable.copy(all);
     }
 
     /** Internal live view of still-active participants. */
@@ -120,11 +119,11 @@ public class Match implements IMatch {
 
     @Override
     public List<IParticipant> getAliveParticipants() {
-        return List.copyOf(participants);
+        return Immutable.copy(participants);
     }
 
     public List<IParticipant> getEliminatedParticipants() {
-        return List.copyOf(eliminatedParticipants);
+        return Immutable.copy(eliminatedParticipants);
     }
 
     /** Internal mutable eliminated list for MatchManager. */
@@ -143,7 +142,7 @@ public class Match implements IMatch {
 
     @Override
     public List<ITeam> getTeams() {
-        return List.copyOf(teams);
+        return Immutable.copy(teams);
     }
 
     public void end() {
@@ -152,7 +151,7 @@ public class Match implements IMatch {
 
     @Override
     public List<IParticipant> getWinnerParticipants() {
-        return List.copyOf(winnerParticipants);
+        return Immutable.copy(winnerParticipants);
     }
 
     @Override
@@ -176,13 +175,12 @@ public class Match implements IMatch {
     }
 
     @Override
-    public void broadcast(String miniMessage, TagResolver... resolvers) {
-        TagResolver combined = TagResolver.resolver(resolvers);
+    public void broadcast(String text, String... placeholders) {
         for (IParticipant participant : getParticipants()) {
-            MessageUtil.sendMessage(participant.getPlayer(), miniMessage, combined);
+            MessageUtil.sendMessage(participant.getPlayer(), text, placeholders);
         }
-        for (Player spectator : List.copyOf(spectatingPlayers)) {
-            MessageUtil.sendMessage(spectator, miniMessage, combined);
+        for (Player spectator : new ArrayList<>(spectatingPlayers)) {
+            MessageUtil.sendMessage(spectator, text, placeholders);
         }
     }
 }

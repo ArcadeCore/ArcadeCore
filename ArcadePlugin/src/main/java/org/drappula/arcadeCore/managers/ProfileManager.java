@@ -1,10 +1,11 @@
 package org.drappula.arcadeCore.managers;
 
+import org.drappula.arcadeCore.util.Immutable;
 import org.bukkit.entity.Player;
 import org.drappula.arcadeApi.systems.IProfile;
 import org.drappula.arcadeApi.systems.IProfileManager;
 import org.drappula.arcadeCore.managers.impl.Profile;
-import org.jspecify.annotations.Nullable;
+import javax.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -46,6 +47,6 @@ public class ProfileManager implements IProfileManager {
 
     @Override
     public Collection<IProfile> all() {
-        return List.copyOf(new ArrayList<IProfile>(profileMap.values()));
+        return Immutable.copy(new ArrayList<IProfile>(profileMap.values()));
     }
 }

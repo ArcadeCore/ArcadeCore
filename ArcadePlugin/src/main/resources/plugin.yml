@@ -1,0 +1,13 @@
+name: ArcadeCore
+description: ${description}
+version: '${version}'
+
+main: org.drappula.arcadeCore.ArcadeCore
+load: POSTWORLD
+
+authors: [ drappula, TejasLamba2006 ]
+
+commands:
+  arcade:
+    description: ArcadeCore main command
+    usage: /<command> [reload|setspawn|start|queue|map]

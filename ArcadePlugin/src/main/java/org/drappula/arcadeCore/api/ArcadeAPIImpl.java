@@ -1,5 +1,6 @@
 package org.drappula.arcadeCore.api;
 
+import java.util.Collections;
 import org.bukkit.entity.Player;
 import org.drappula.arcadeApi.ArcadeAPI;
 import org.drappula.arcadeApi.database.IGameStatsManager;
@@ -22,7 +23,7 @@ import org.drappula.arcadeCore.managers.game.MatchManager;
 import org.drappula.arcadeCore.managers.map.MapManager;
 import org.drappula.arcadeCore.managers.queue.QueueManager;
 import org.drappula.arcadeCore.util.PlayerUtil;
-import org.jspecify.annotations.Nullable;
+import javax.annotation.Nullable;
 
 import java.sql.SQLException;
 import java.util.List;
@@ -92,7 +93,7 @@ public class ArcadeAPIImpl implements ArcadeAPI {
     @Override
     public @Nullable IParticipant getParticipant(Game game, Player player) {
         UUID uuid = player.getUniqueId();
-        for (IParticipant participant : GameManager.get().getParticipants().getOrDefault(game.getId().toLowerCase(), List.of())) {
+        for (IParticipant participant : GameManager.get().getParticipants().getOrDefault(game.getId().toLowerCase(), Collections.emptyList())) {
             if (participant.getPlayer().getUniqueId().equals(uuid)) return participant;
         }
         return null;

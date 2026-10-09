@@ -1,5 +1,6 @@
 package org.drappula.arcadeCore.managers.game.tasks;
 
+import org.drappula.arcadeCore.util.Immutable;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.drappula.arcadeApi.systems.game.MatchState;
@@ -47,7 +48,7 @@ public class MatchEndTask extends BukkitRunnable {
         }
         if (time == 5) {
             // Copy the list: eliminateParticipant removes from the active list while we iterate
-            for (IParticipant participant : List.copyOf(match.getAliveParticipants())) {
+            for (IParticipant participant : Immutable.copy(match.getAliveParticipants())) {
                 MatchManager.get().eliminateParticipant(participant);
             }
         }

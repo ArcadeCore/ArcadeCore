@@ -1,5 +1,6 @@
 package org.drappula.arcadeCore.managers;
 
+import org.drappula.arcadeCore.util.Log;
 import org.drappula.arcadeApi.database.UserData;
 import org.drappula.arcadeCore.ArcadeCore;
 import org.drappula.arcadeCore.database.Database;
@@ -37,7 +38,7 @@ public class UserDataManager {
             save(profile);
             return profile;
         } catch (SQLException e) {
-            ArcadeCore.get().getSLF4JLogger().error("An error occurred while trying to get or create user {} ({})", username, uuid);
+            Log.error("An error occurred while trying to get or create user {} ({})", username, uuid);
             throw new RuntimeException(e);
         }
     }

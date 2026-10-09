@@ -1,9 +1,7 @@
 plugins {
     id("java-library")
     id("jacoco")
-    id("xyz.jpenilla.run-paper") version "3.0.2"
     id("com.gradleup.shadow") version "9.4.3"
-    kotlin("jvm")
 }
 
 import java.time.Duration
@@ -11,14 +9,17 @@ import java.time.Duration
 repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
+    maven("https://hub.spigotmc.org/nexus/content/repositories/snapshots/")
 }
 
 dependencies {
-    compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
+    compileOnly("org.spigotmc:spigot-api:1.8.8-R0.1-SNAPSHOT")
+    compileOnly("org.jspecify:jspecify:1.0.0")
+    compileOnly("org.jetbrains:annotations:24.1.0")
+    compileOnly("com.google.code.findbugs:jsr305:3.0.2")
     implementation("dev.dejvokep:boosted-yaml:1.3.7")
     implementation("dev.dejvokep:boosted-yaml-spigot:1.5")
     implementation("org.xerial:sqlite-jdbc:3.53.2.0")
-    implementation(kotlin("stdlib-jdk8"))
 
     implementation(project(":ArcadeAPI"))
 
@@ -33,11 +34,17 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-java {
-    toolchain.languageVersion = JavaLanguageVersion.of(21)
+// Production code must load on Java 8 servers (1.8 era); tests may use the newer JDK.
+tasks.named<JavaCompile>("compileJava") {
+    options.release.set(8)
 }
 
 tasks {
+    shadowJar {
+        // JDBC drivers register through META-INF/services; without merging, the shaded sqlite driver is invisible.
+        mergeServiceFiles()
+    }
+
     test {
         useJUnitPlatform()
     }
@@ -49,17 +56,9 @@ tasks {
         }
     }
 
-    runServer {
-        // Configure the Minecraft version for our task.
-        // This is the only required configuration besides applying the plugin.
-        // Your plugin's jar (or shadowJar if present) will be used automatically.
-        minecraftVersion("1.21.11")
-        jvmArgs("-Xms2G", "-Xmx2G")
-    }
-
     processResources {
         val props = mapOf("version" to version, "description" to project.description)
-        filesMatching("paper-plugin.yml") {
+        filesMatching("plugin.yml") {
             expand(props)
         }
     }
@@ -76,6 +75,6 @@ tasks {
         timeout.set(Duration.ofMinutes(15))
     }
 }
-kotlin {
-    jvmToolchain(21)
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
 }

@@ -1,5 +1,6 @@
 package org.drappula.arcadeCore.config;
 
+import org.drappula.arcadeCore.util.Log;
 import dev.dejvokep.boostedyaml.YamlDocument;
 import dev.dejvokep.boostedyaml.dvs.versioning.BasicVersioning;
 import dev.dejvokep.boostedyaml.settings.general.GeneralSettings;
@@ -31,7 +32,7 @@ public abstract class Config {
                     UpdaterSettings.builder().setVersioning(new BasicVersioning("version")).build()
             );
         } catch (IOException e) {
-            ArcadeCore.get().getSLF4JLogger().error("An error occurred while setting up {} configuration.", fileName, e);
+            Log.error("An error occurred while setting up {} configuration.", fileName, e);
         }
     }
 }
