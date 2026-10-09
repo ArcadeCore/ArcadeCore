@@ -1,10 +1,13 @@
 # ArcadeCore API Usage Guide
 
 How to build a minigame addon on top of ArcadeCore, from project setup to the
-final `end()` call, covering only the `ArcadeAPI` module: the interfaces and
-events your plugin compiles against. (ArcadeBedrockPillars in
-`~/Projects/ArcadeBedrockPillars` is a working example of everything
-below.)
+final `end()` call, covering only the `ArcadeAPI` module (version 1.1.0): the
+interfaces, events and message helper your plugin compiles against.
+ArcadeBedrockPillars (`../ArcadeBedrockPillars`) and ArcadeFFA (`../ArcadeFFA`)
+are working examples of everything below.
+
+ArcadeCore runs on Minecraft 1.8 to 26.3 with one jar, and addons are expected
+to do the same. Section 2.3 lists what that means for your code.
 
 ## 1. Who owns what
 
@@ -27,40 +30,91 @@ match runs forever.
 
 ### 2.1 Gradle dependency
 
-Compile against the API. ArcadeCore provides it at runtime
-(`join-classpath: true`, see below), so keep it `compileOnly` to stay thin:
+Compile against the 1.8.8 Spigot API and the ArcadeAPI. ArcadeCore provides
+the ArcadeAPI classes at runtime (via `depend`, see below), so keep it
+`compileOnly` to stay thin. Compile for Java 8 so the jar loads on 1.8 servers:
 
 ```kotlin
 repositories {
     mavenCentral()
-    maven("https://repo.papermc.io/repository/maven-public/")
+    maven("https://hub.spigotmc.org/nexus/content/repositories/snapshots/")
 }
 
 dependencies {
-    compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
-    compileOnly("org.drappula:ArcadeAPI:1.0.0")
+    compileOnly("org.spigotmc:spigot-api:1.8.8-R0.1-SNAPSHOT")
+    compileOnly("org.drappula:ArcadeAPI:1.1.0")
+}
+
+tasks.named<JavaCompile>("compileJava") {
+    options.release.set(8)
 }
 ```
 
-### 2.2 `paper-plugin.yml`
+The existing addons get `org.drappula:ArcadeAPI` from a sibling checkout:
+`settings.gradle.kts` has `includeBuild("../ArcadeCore")` and Gradle
+substitutes the module. ArcadeCore has no publishing setup, so a standalone addon
+has to get ArcadeAPI 1.1.0 into its build some other way.
+If your tests touch ArcadeAPI classes, also declare it as `testImplementation`,
+because `compileOnly` is not on the test classpath.
 
-Declare the load order so the API provider exists before your `onEnable`
-runs. `join-classpath: true` puts ArcadeCore's classes (including
-`ArcadeAPI`) on your plugin's classpath at runtime:
+### 2.2 `plugin.yml`
+
+Use a plain `plugin.yml` (no `paper-plugin.yml`, no `api-version`). `depend`
+makes ArcadeCore load first and puts its classes, including `ArcadeAPI`, on
+your plugin's classpath. Commands are declared here too (section 3):
 
 ```yaml
 name: MyMinigame
 version: '1.0.0'
 main: com.example.myminigame.MyMinigame
-api-version: '1.21.11'
 load: POSTWORLD
-dependencies:
-  server:
-    ArcadeCore:
-      load: BEFORE
-      required: true
-      join-classpath: true
+depend: [ ArcadeCore ]
+commands:
+  mygame:
+    description: My minigame
+    usage: /mygame [join|leave]
 ```
+
+### 2.3 Staying 1.8-compatible
+
+The server may be anything from 1.8 to 26.3, so the same rules the core follows
+apply to addons:
+
+- No Paper-only API (`Player#sendRichMessage`, `Event#callEvent`,
+  `getSLF4JLogger`, Adventure `Component`, MiniMessage, Brigadier command
+  registration, `paper-plugin.yml`). They do not exist on Spigot or on 1.8.
+  Use `Bukkit.getPluginManager().callEvent(...)`, `getLogger()` and
+  `Messages` instead.
+- Java 8 only: no `var`, no `List.of`/`Map.of`, no private interface methods,
+  no switch expressions, no records or text blocks. `--release 8` rejects
+  most of these at compile time.
+- Check Bukkit calls against the 1.8.8 API, not just whatever your IDE
+  completes. Newer-only methods compile fine against a newer API and then
+  throw `NoSuchMethodError` on old servers. Example: use
+  `player.getMaxHealth()` / `setMaxHealth()`, not the `GENERIC_MAX_HEALTH`
+  attribute.
+- Materials and items: names changed in 1.13 (`WOOL`/`WHITE_WOOL`,
+  `STATIONARY_LAVA`/`LAVA`). Either resolve through XSeries
+  (`XMaterial.matchXMaterial(name)`, `XMaterial.LAVA.parseMaterial()`) or read
+  names from your config and skip what the running version does not know.
+  ArcadeBedrockPillars does the latter: `config.yml` keeps modern names and
+  unknown entries are skipped.
+- XSeries is not on your classpath. ArcadeCore shades and relocates its own
+  copy to `org.drappula.arcadeCore.libs.xseries`, which is not part of the API.
+  If you use XSeries, shade and relocate your own copy into your jar
+  (ArcadeBedrockPillars relocates to `org.drappula.arcadeBedrockPillars.libs.xseries`).
+- Chunk generators: use the legacy `generateChunkData` API, which every
+  version still accepts. `WorldCreator.name(...)` for world creation.
+- Things that degrade on old versions: there is no boss bar on 1.8 (and
+  `bossbar:` messages show as an action bar on every version), no shield or
+  scaffolding items on 1.8 (skipped), and world height differs by version, so
+  a map option range such as BedrockPillars' `lava-start-y` (declared -64 to
+  320, which assumes 1.18+ height) is only meaningful up to what the server
+  supports.
+- Tests (MockBukkit v1.21, JDK 21) run on a modern API. A passing test does not
+  prove a call exists on 1.8. Boot your jar on an old server before claiming
+  compatibility; `../TestServer-matrix/matrix.sh` does that for 1.8.8, 1.12.2,
+  1.16.5, 1.20.4, 1.21.4 and 26.3.
 
 ## 3. Plugin entrypoint: register your game
 
@@ -73,7 +127,10 @@ public class MyMinigame extends JavaPlugin {
         saveDefaultConfig();
         ArcadeAPIProvider.get().getGameManager().registerGame(game);
         getServer().getPluginManager().registerEvents(new MyListener(game), this);
-        // ... command registration ...
+
+        MyCommand command = new MyCommand(game);
+        getCommand("mygame").setExecutor(command);       // declared in plugin.yml
+        getCommand("mygame").setTabCompleter(command);
     }
 
     @Override
@@ -89,8 +146,13 @@ public class MyMinigame extends JavaPlugin {
   internally and must not be blank or contain spaces (`IllegalArgumentException`
   otherwise).
 - `ArcadeAPIProvider.get()` is the single entry point. It throws
-  `IllegalStateException` when the API isn't loaded. The `load: BEFORE`
-  dependency above is what prevents that.
+  `IllegalStateException` when the API isn't loaded. The `depend: [ ArcadeCore ]`
+  entry above is what prevents that.
+- Commands are plain Bukkit: a `CommandExecutor` (and optionally a
+  `TabCompleter`) wired with `getCommand(name).setExecutor(...)` for a command
+  declared under `commands:` in your `plugin.yml`. Core itself and the existing
+  addons (`/bp`, `/ffa`, `/hub`) do it this way. There is no Brigadier. Check
+  permissions and arguments by hand and reply with `Messages.chat` (section 8.4).
 - In tests, back it with a mock: `ArcadeAPIProvider.register(mock(ArcadeAPI.class))`
   in setup, `ArcadeAPIProvider.unregister()` in teardown.
 
@@ -194,7 +256,7 @@ JoinResult result = ArcadeAPIProvider.get()
         .getQueueManager()
         .joinQueue(player, game);
 if (result != JoinResult.SUCCESS) {
-    player.sendRichMessage("<red>Failed to join the queue.");
+    Messages.chat(player, "<red>Failed to join the queue: <reason>", "reason", result.name());
 }
 ```
 
@@ -300,9 +362,40 @@ at creation. Read them via `match.getTeams()` or `participant.getTeam()`:
 
 ### 8.4 Talking to players
 
+All player text goes through `org.drappula.arcadeApi.message.Messages`. It does
+not use Adventure or MiniMessage, so it behaves the same on every version.
+
 ```java
-match.broadcast("<gold>Final showdown!"); // MiniMessage, all participants
+match.broadcast("message:<gold>Final showdown!");                    // everyone in the match
+match.broadcast("title:<red>Round <n>;subtitle:<gray>Fight!", "n", "3");
+
+Messages.send(player, "actionbar:<yellow>Lava rising to <y>", "y", "40");   // prefix-routed
+Messages.chat(sender, "<red>Unknown option <gray><key></gray>", "key", key); // plain chat, no prefix needed
 ```
+
+- Format: `prefix:text;prefix:text`. Prefixes: `message:`, `title:`,
+  `subtitle:`, `titletime:fadeInMs:stayMs:fadeOutMs`, `actionbar:`,
+  `bossbar:text:progress:color:overlay`. Escape a literal semicolon as `\;`
+  (in Java source `"\\;"`).
+- **Unprefixed text is dropped for players** (the console gets it as chat), so
+  `broadcast` and `Messages.send` need a prefix, usually `message:`.
+  `Messages.chat` is the exception: it always sends chat and takes no prefix.
+- Placeholders are `<name>` tokens in the text, filled from alternating
+  key/value `String` varargs: `"name", "Bob"`. Values are inserted literally and
+  never parsed as markup, so player names or user input cannot inject colours.
+- Styling is a MiniMessage subset translated to section-sign codes: the 16
+  colour names (`<red>`, `<dark_gray>`, ...), `<b>`, `<i>`, `<u>`, `<st>`,
+  `<obf>`, `<reset>`, closing tags like `</b>`, and `<br>`. Hex colours,
+  gradients, click and hover events are not supported; unknown tags stay as text.
+- Titles and action bars are drawn by XSeries inside ArcadeCore. Boss bars are
+  not implemented: a `bossbar:` segment is shown as an action bar on every
+  version.
+- `IMatch.broadcast(String text, String... placeholders)` is the 1.1.0
+  signature. The 1.0.0 `broadcast(String, TagResolver...)` is gone, and no
+  Adventure types appear in `ArcadeAPI` any more. Addons built against 1.0.0
+  must be recompiled and their broadcast calls rewritten.
+
+Other helpers:
 
 - `addSpectator` / `removeSpectator` / `isSpectating` manage viewers.
 - `ArcadeAPI.sendToLobby(player)` returns a player to the lobby manually.
@@ -317,7 +410,7 @@ items keep working). Matches themselves are unaffected.
 During the match start countdown the core additionally cages every
 participant in glass and freezes movement (both default-on, see
 `getMatchStartSettings()`). Cages snapshot whatever they cover and restore
-it when the match starts — safe on hand-built maps. Your win-condition and
+it when the match starts - safe on hand-built maps. Your win-condition and
 elimination wiring are unaffected; only block-breaking/placing during the
 countdown stays yours to guard.
 
@@ -446,7 +539,9 @@ void teardown() {
 - MockBukkit's default worlds cap at y=128, so point your arena config at a
   taller `WorldMock` (e.g. `new WorldMock(Material.AIR, Biome.PLAINS, -64, 320, -64)`)
   for high-altitude builds.
-- Assert player-visible text via `player.nextComponentMessage()`.
+- Assert player-visible text via `player.nextMessage()` (legacy section-sign
+  string). Titles go through the `ScreenText` backend, which is not installed
+  in tests, so do not assert titles; check state instead.
 
 ## 14. Pitfalls checklist
 
@@ -465,3 +560,6 @@ void teardown() {
 7. **New cross-plugin surface goes in `ArcadeAPI` first**, then the impl
    singleton, then exposure through `ArcadeAPIImpl`. Never reach into
    `arcadeCore` internals from an addon.
+8. **Keep it 1.8-safe.** No Paper-only API, no Java 9+ syntax, no raw modern
+   material names in code (section 2.3). `broadcast` and `Messages.send` text
+   needs a `message:` (or other) prefix or players see nothing.

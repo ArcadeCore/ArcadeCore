@@ -148,12 +148,13 @@ public class MapDataManager {
     }
 
     public static void setConfig(String mapId, String key, String value) throws SQLException {
+        // No UPSERT: servers on 1.8 to 1.12 bundle a SQLite older than 3.24.
+        ensureConfig(mapId, key, value);
         try (PreparedStatement stmt = Database.get().prepareStatement(
-                "INSERT INTO map_config (map_id, key, value) VALUES (?, ?, ?) " +
-                        "ON CONFLICT(map_id, key) DO UPDATE SET value = excluded.value")) {
-            stmt.setString(1, mapId);
-            stmt.setString(2, key);
-            stmt.setString(3, value);
+                "UPDATE map_config SET value = ? WHERE map_id = ? AND key = ?")) {
+            stmt.setString(1, value);
+            stmt.setString(2, mapId);
+            stmt.setString(3, key);
             stmt.executeUpdate();
         }
     }
@@ -169,8 +170,7 @@ public class MapDataManager {
 
     public static void ensureConfig(String mapId, String key, String value) throws SQLException {
         try (PreparedStatement stmt = Database.get().prepareStatement(
-                "INSERT INTO map_config (map_id, key, value) VALUES (?, ?, ?) " +
-                        "ON CONFLICT(map_id, key) DO NOTHING")) {
+                "INSERT OR IGNORE INTO map_config (map_id, key, value) VALUES (?, ?, ?)")) {
             stmt.setString(1, mapId);
             stmt.setString(2, key);
             stmt.setString(3, value);

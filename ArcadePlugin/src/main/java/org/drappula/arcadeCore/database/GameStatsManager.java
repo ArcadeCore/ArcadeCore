@@ -43,7 +43,7 @@ public class GameStatsManager implements IGameStatsManager {
         try {
             String gameId = match.getGame().getId();
             try (PreparedStatement stmt = Database.get().prepareStatement(
-                    "INSERT INTO games (game_id) VALUES (?) ON CONFLICT(game_id) DO NOTHING")) {
+                    "INSERT OR IGNORE INTO games (game_id) VALUES (?)")) {
                 stmt.setString(1, gameId);
                 stmt.executeUpdate();
             }
@@ -69,15 +69,13 @@ public class GameStatsManager implements IGameStatsManager {
                 // game_stats references user_profiles; ensure the row exists first.
                 UserDataManager.getOrCreate(entry.getKey(), entry.getValue());
                 boolean won = winnerIds.contains(entry.getKey());
+                ensureRow(entry.getKey(), gameId);
                 try (PreparedStatement stmt = Database.get().prepareStatement(
-                        "INSERT INTO game_stats (uuid, game_id, points, wins, losses) VALUES (?, ?, 0, ?, ?) " +
-                                "ON CONFLICT(uuid, game_id) DO UPDATE SET " +
-                                "wins = game_stats.wins + excluded.wins, " +
-                                "losses = game_stats.losses + excluded.losses")) {
-                    stmt.setString(1, entry.getKey().toString());
-                    stmt.setString(2, gameId);
-                    stmt.setInt(3, won ? 1 : 0);
-                    stmt.setInt(4, won ? 0 : 1);
+                        "UPDATE game_stats SET wins = wins + ?, losses = losses + ? WHERE uuid = ? AND game_id = ?")) {
+                    stmt.setInt(1, won ? 1 : 0);
+                    stmt.setInt(2, won ? 0 : 1);
+                    stmt.setString(3, entry.getKey().toString());
+                    stmt.setString(4, gameId);
                     stmt.executeUpdate();
                 }
             }
@@ -135,40 +133,56 @@ public class GameStatsManager implements IGameStatsManager {
         if (!key.matches("[a-z0-9_]+")) throw new IllegalArgumentException("Invalid stat key: " + key);
         UserDataManager.getOrCreate(uuid, username);
         try (PreparedStatement stmt = Database.get().prepareStatement(
-                "INSERT INTO games (game_id) VALUES (?) ON CONFLICT(game_id) DO NOTHING")) {
+                "INSERT OR IGNORE INTO games (game_id) VALUES (?)")) {
             stmt.setString(1, gameId);
             stmt.executeUpdate();
         }
-        String path = "$." + key;
+        // Read-modify-write in Java: the server may bundle an old SQLite without the JSON functions or UPSERT.
+        ensureRow(uuid, gameId);
+        Map<String, Integer> other = new LinkedHashMap<String, Integer>(readOther(uuid, gameId));
+        Integer current = other.get(key);
+        other.put(key, (current == null ? 0 : current) + delta);
         try (PreparedStatement stmt = Database.get().prepareStatement(
-                "INSERT INTO game_stats (uuid, game_id, points, wins, losses, other_stats) " +
-                        "VALUES (?, ?, 0, 0, 0, json_set('{}', ?, ?)) " +
-                        "ON CONFLICT(uuid, game_id) DO UPDATE SET other_stats = json_set(" +
-                        "COALESCE(game_stats.other_stats, '{}'), ?, " +
-                        "COALESCE(json_extract(game_stats.other_stats, ?), 0) + ?)")) {
-            stmt.setString(1, uuid.toString());
-            stmt.setString(2, gameId);
-            stmt.setString(3, path);
-            stmt.setInt(4, delta);
-            stmt.setString(5, path);
-            stmt.setString(6, path);
-            stmt.setInt(7, delta);
+                "UPDATE game_stats SET other_stats = ? WHERE uuid = ? AND game_id = ?")) {
+            stmt.setString(1, toJson(other));
+            stmt.setString(2, uuid.toString());
+            stmt.setString(3, gameId);
             stmt.executeUpdate();
         }
+    }
+
+    /** Creates the zeroed stats row if missing. INSERT OR IGNORE exists on every SQLite; never use REPLACE (it cascades). */
+    private void ensureRow(UUID uuid, String gameId) throws SQLException {
+        try (PreparedStatement stmt = Database.get().prepareStatement(
+                "INSERT OR IGNORE INTO game_stats (uuid, game_id, points, wins, losses) VALUES (?, ?, 0, 0, 0)")) {
+            stmt.setString(1, uuid.toString());
+            stmt.setString(2, gameId);
+            stmt.executeUpdate();
+        }
+    }
+
+    private Map<String, Integer> readOther(UUID uuid, String gameId) throws SQLException {
+        try (PreparedStatement stmt = Database.get().prepareStatement(
+                "SELECT other_stats FROM game_stats WHERE uuid = ? AND game_id = ?")) {
+            stmt.setString(1, uuid.toString());
+            stmt.setString(2, gameId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next() ? parseOther(rs.getString("other_stats")) : Collections.<String, Integer>emptyMap();
+            }
+        }
+    }
+
+    private static String toJson(Map<String, Integer> stats) {
+        com.google.gson.JsonObject obj = new com.google.gson.JsonObject();
+        for (Map.Entry<String, Integer> entry : stats.entrySet()) obj.addProperty(entry.getKey(), entry.getValue());
+        return obj.toString();
     }
 
     @Override
     public int getStat(UUID uuid, String gameId, String key) throws SQLException {
         if (!key.matches("[a-z0-9_]+")) throw new IllegalArgumentException("Invalid stat key: " + key);
-        try (PreparedStatement stmt = Database.get().prepareStatement(
-                "SELECT COALESCE(json_extract(other_stats, ?), 0) AS v FROM game_stats WHERE uuid = ? AND game_id = ?")) {
-            stmt.setString(1, "$." + key);
-            stmt.setString(2, uuid.toString());
-            stmt.setString(3, gameId);
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next() ? rs.getInt("v") : 0;
-            }
-        }
+        Integer value = readOther(uuid, gameId).get(key);
+        return value == null ? 0 : value;
     }
 
     @Override
@@ -192,16 +206,16 @@ public class GameStatsManager implements IGameStatsManager {
     public void addPoints(UUID uuid, String username, String gameId, int delta) throws SQLException {
         UserDataManager.getOrCreate(uuid, username);
         try (PreparedStatement stmt = Database.get().prepareStatement(
-                "INSERT INTO games (game_id) VALUES (?) ON CONFLICT(game_id) DO NOTHING")) {
+                "INSERT OR IGNORE INTO games (game_id) VALUES (?)")) {
             stmt.setString(1, gameId);
             stmt.executeUpdate();
         }
+        ensureRow(uuid, gameId);
         try (PreparedStatement stmt = Database.get().prepareStatement(
-                "INSERT INTO game_stats (uuid, game_id, points, wins, losses) VALUES (?, ?, ?, 0, 0) " +
-                        "ON CONFLICT(uuid, game_id) DO UPDATE SET points = game_stats.points + excluded.points")) {
-            stmt.setString(1, uuid.toString());
-            stmt.setString(2, gameId);
-            stmt.setInt(3, delta);
+                "UPDATE game_stats SET points = points + ? WHERE uuid = ? AND game_id = ?")) {
+            stmt.setInt(1, delta);
+            stmt.setString(2, uuid.toString());
+            stmt.setString(3, gameId);
             stmt.executeUpdate();
         }
     }

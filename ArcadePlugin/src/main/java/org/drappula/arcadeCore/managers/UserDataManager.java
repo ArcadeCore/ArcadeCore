@@ -45,11 +45,17 @@ public class UserDataManager {
 
 
     public static void save(UserData profile) throws SQLException {
+        // INSERT OR IGNORE + UPDATE instead of UPSERT (needs SQLite 3.24) or REPLACE (cascades into game_stats).
         try (PreparedStatement stmt = Database.get().prepareStatement(
-                "INSERT INTO user_profiles (uuid, username) VALUES (?, ?) " +
-                        "ON CONFLICT(uuid) DO UPDATE SET username = excluded.username")) {
+                "INSERT OR IGNORE INTO user_profiles (uuid, username) VALUES (?, ?)")) {
             stmt.setString(1, profile.getUuid().toString());
             stmt.setString(2, profile.getUsername());
+            stmt.executeUpdate();
+        }
+        try (PreparedStatement stmt = Database.get().prepareStatement(
+                "UPDATE user_profiles SET username = ? WHERE uuid = ?")) {
+            stmt.setString(1, profile.getUsername());
+            stmt.setString(2, profile.getUuid().toString());
             stmt.executeUpdate();
         }
     }

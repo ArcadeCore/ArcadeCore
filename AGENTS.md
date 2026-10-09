@@ -1,38 +1,38 @@
 # AGENTS.md
 
-Paper 1.21.11 plugin (Java 21 toolchain; Kotlin `jvm` applied but no `.kt` sources yet). Gradle root with two subprojects:
+Spigot/Paper plugin, one jar for Minecraft 1.8 to 26.3 (and forks). Production code is Java 8 bytecode (`options.release.set(8)`) compiled against `spigot-api:1.8.8-R0.1-SNAPSHOT` (`compileOnly`); tests run on JDK 21 with MockBukkit v1.21. Gradle root with two subprojects:
 
-- `ArcadeAPI` (`org.drappula.arcadeApi`): `java`-only interfaces/events, no implementation. What addon game plugins compile against.
-- `ArcadePlugin` (`org.drappula.arcadeCore`): the implementation; produces the runnable shadowed jar. Entry `ArcadeCore.java` (`ArcadeCore.get()` singleton), loader `ArcadeCoreLoader`.
+- `ArcadeAPI` (`org.drappula.arcadeApi`, version `1.1.0`): `java`-only interfaces/events plus `message/Messages`, `LegacyText`, `ScreenText`. No implementation of the core. What addon game plugins compile against. No paper-api or Adventure types leak through it.
+- `ArcadePlugin` (`org.drappula.arcadeCore`): the implementation; produces the runnable shadowed jar. Entry `ArcadeCore.java` (`ArcadeCore.get()` singleton). Descriptor is `plugin.yml` (no `api-version`); there is no `paper-plugin.yml` and no loader class.
 
-Paper API version (`1.21.11`) is declared in **both** build files (`implementation` in `ArcadeAPI`, `compileOnly` in `ArcadePlugin`) — bump both together.
+Keep production code version-neutral: no Paper-only API, no Adventure/MiniMessage, no Brigadier, no SLF4J logger, no Java 9+ syntax or library calls, no `Event#callEvent`. Use `Log`, `Events.call`, `Messages`, and XSeries (`XMaterial`) for anything whose name changed across versions. If an API only exists on newer servers, find the 1.8 equivalent or degrade, and say so in `API_USAGE.md`.
 
 ## Build & verify (run from root)
 
-- `./gradlew build` — compiles both modules, runs tests, incl. `shadowJar`; takes ~2 min.
-- `./gradlew test` / `./gradlew :ArcadePlugin:test` — unit suite (JUnit 5 + Mockito + MockBukkit). For focused runs use `--tests "<class>"`.
-- `./gradlew :ArcadePlugin:shadowJar` — runnable relocated jar → `ArcadePlugin/build/libs`.
-- `./gradlew :ArcadePlugin:runServer` — local Paper 1.21.11 test server with the plugin installed (`run-paper`, `-Xms2G -Xmx2G`); server files land in `ArcadePlugin/run/` (gitignored via `run`). On memory-constrained machines lower `jvmArgs` first — a 2G server plus Gradle workers has OOM-crashed a loaded desktop.
-- `./gradlew :ArcadePlugin:smokeTest` — real smoke test: boots Paper in tmux via `runServer`, asserts `Enabling ArcadeCore` with no errors/exceptions, sends `arcade` + `stop` via `tmux send-keys`, reads logs via `tmux capture-pane` (`scripts/smoke-test.sh`, ~1 min warm).
-- Sibling-project live-server check (ArcadeBedrockPillars runs ArcadeCore in its own `run/` dir): polls `run/logs/latest.log` for boot, then shows ArcadeCore enable/errors. Assumes the server is already running there — it waits, it does not launch:
-  `cd ~/Projects/ArcadeBedrockPillars && for i in $(seq 1 100); do sleep 5; LOG=run/logs/latest.log; if grep -qE "Done \([0-9.]+s\)" "$LOG" 2>/dev/null; then echo "BOOTED after ~$((i*5))s"; break; fi; if grep -qE "FAILED TO BIND TO PORT|OutOfMemoryError|You need to agree" "$LOG" 2>/dev/null; then echo FATAL; break; fi; done; grep -E "Enabling Arcade|ERROR|Exception" run/logs/latest.log | head -n 6`
+- `./gradlew build` - compiles both modules, runs tests, incl. `shadowJar`.
+- `./gradlew test` / `./gradlew :ArcadePlugin:test` / `./gradlew :ArcadeAPI:test` - unit suites (JUnit 5 + Mockito; ArcadePlugin also MockBukkit). For focused runs use `--tests "<class>"`. Last full run: 220 tests pass in ArcadeCore.
+- `./gradlew :ArcadePlugin:shadowJar` - runnable jar → `ArcadePlugin/build/libs/ArcadePlugin-1.0.0-all.jar`. Shades `boosted-yaml`, `boosted-yaml-spigot`, `XSeries` (relocated to `org.drappula.arcadeCore.libs.xseries`) and `sqlite-jdbc`. `mergeServiceFiles()` is required so the shaded sqlite driver is visible; `Database.connect` also calls `Class.forName("org.sqlite.JDBC")`.
+- There is no `runServer` task any more (run-paper and the Kotlin plugin were removed). For a live server use the matrix scripts in `../TestServer-matrix` (`matrix.sh` boots 1.8.8, 1.12.2, 1.16.5, 1.20.4, 1.21.4 and 26.3 with the current jars; `run-server.sh` feeds console commands over stdin) or a manual server with the jar in `plugins/`.
+- `scripts/smoke-test.sh` and `:ArcadePlugin:smokeTest` still exist but were written for the old `runServer` flow; check them before relying on them.
+- Never run Gradle in two of the four repos at once: addons include this build via `includeBuild`, and they share its `build` directory.
+- Verified: boot + command smoke on Paper 1.8.8, 1.12.2, 1.16.5, 1.20.4, 1.21.4 and 26.3 with ArcadeCore + BedrockPillars + FFA + Hub, no errors. A bot-driven full match on each version has not been done.
 - No CI, no lint/format config. `org.gradle.configuration-cache/parallel/caching` are on (`gradle.properties`).
 
 ## Test-driven development (mandatory)
 
-TDD is required for all work in this repo — new features, bug fixes, refactors, behavior changes. No production code without a failing test first (RED → verify fail → GREEN → verify pass → REFACTOR). New cross-plugin surface still goes in `ArcadeAPI` first, but the test goes first of all.
+TDD is required for all work in this repo - new features, bug fixes, refactors, behavior changes. No production code without a failing test first (RED → verify fail → GREEN → verify pass → REFACTOR). New cross-plugin surface still goes in `ArcadeAPI` first, but the test goes first of all.
 
 Test harness notes (all verified against the current suite):
 
 - Shared base is `ServerTest` (MockBukkit + mocked `ArcadeCore` over real config files). Events, scheduler ticks (`performTicks`), joins/leaves, full match lifecycle, and command handlers run for real.
-- SQLite-backed managers use in-memory DB via test-only `database/TestDb.java` (reflection injection — never add test hooks to prod classes).
-- `paper-api` is `compileOnly` in `ArcadePlugin`, so tests redeclare it as `testImplementation`; MockBukkit is declared first so its bundled `paper-api` wins classpath order. Keep that order.
-- Known mock gap: MockBukkit records legacy titles only — Adventure `sendTitlePart` is a silent no-op, so assert task completion via state + lifecycle callbacks, not titles.
+- SQLite-backed managers use in-memory DB via test-only `database/TestDb.java` (reflection injection - never add test hooks to prod classes).
+- `spigot-api` is `compileOnly`, so tests redeclare what they need. In `ArcadePlugin` MockBukkit is declared first so its bundled `paper-api` wins classpath order; keep that order. Paper API is only on the test classpath, so a passing test does not prove a call exists on 1.8.
+- Message assertions: core text goes through `Messages`, which ends in `sendMessage(String)`, so tests read `player.nextMessage()`. Titles and action bars go through the `ScreenText` backend (`Messages.useScreenText`); tests do not install `XSeriesScreenText`, so assert task completion via state + lifecycle callbacks, not titles.
 
 ## Lifecycle (`ArcadeCore.java`)
 
-`onEnable` order matters: `setupConfig()` → `connectDatabase()` (throws on failure) → `MapManager.get().load()` → `destroyOrphanedArenas()` (crash leftovers) → commands → listeners → 30 s arena sweeper task → `registerAPI()` (publishes `ArcadeAPIImpl` via `ArcadeAPIProvider`).
-`onDisable`: `GameManager.reload()` (wipes in-memory matches/participants — nothing match-related survives restart) → `ArenaWorldManager.destroyAll()` (evacuates players, unloads + deletes leftover arena worlds) → `MapManager.releaseAll()` (clears `in_use` flags in memory and DB) → `Database.disconnect()`.
+`onEnable` order matters: `Messages.useScreenText(new XSeriesScreenText())` → `setupConfig()` → `connectDatabase()` (throws on failure) → `MapManager.get().load()` → `destroyOrphanedArenas()` (crash leftovers) → commands (`getCommand("arcade")` executor + tab completer, declared in `plugin.yml`) → listeners (`LobbyListener`, `MatchListener`) → 30 s arena sweeper task → `registerAPI()` (publishes `ArcadeAPIImpl` via `ArcadeAPIProvider`).
+`onDisable`: `GameManager.reload()` (wipes in-memory matches/participants - nothing match-related survives restart) → `ArenaWorldManager.destroyAll()` (evacuates players, unloads + deletes leftover arena worlds) → `MapManager.releaseAll()` (clears `in_use` flags in memory and DB) → `Database.disconnect()`.
 
 ## Match / queue flow
 
@@ -52,24 +52,28 @@ Test harness notes (all verified against the current suite):
 
 ## Maps & database
 
-- Single static SQLite connection (`<data-folder>/database.db`, `PRAGMA foreign_keys = ON`), raw JDBC, all called synchronously on the server thread — keep queries small, no connection pooling to configure.
+- Single static SQLite connection (`<data-folder>/database.db`, `PRAGMA foreign_keys = ON`), raw JDBC, all called synchronously on the server thread - keep queries small, no connection pooling to configure.
 - Six tables (`Database.java`): `user_profiles`, `games`, `game_stats` (per-player wins/losses, `other_stats` JSON currently always NULL), `maps` (`enabled` + `in_use` flags), `map_spawns` (cascade-deletes with its map), `map_config` (per-map addon-option overrides, cascade-deletes with its map).
 - `MapManager` loads the pool at enable, skipping maps whose world isn't loaded (warning, not error). All map admin is in-game via `/arcade map ...`; there is no file-based map config.
 
 ## Configs & messages
 
 - Three BoostedYAML configs (`config/Config.java` wraps `YamlDocument` + `SpigotSerializer` + `BasicVersioning` on a `version` key, so files self-update to packaged defaults): `data.yml` (mutable runtime state, e.g. `SPAWN_LOCATION`), `config.yml` (`lobby.*`, `match.*`, `queue.start-countdown`), `messages.yml` (all player text).
-- Player-facing text goes through `MessageUtil.sendMessage` (MiniMessage + Adventure placeholders; `;`-separated segments with `title:`/`subtitle:`/`titletime:`/`actionbar:`/`message:`/`bossbar:` prefixes route to title parts, action bar, chat, boss bars). Adding a message = new key in `messages.yml` **plus** a `MessagesConfig.get().getString("<key>")` call — both, or it NPEs/reads nothing.
+- Player-facing text goes through `MessageUtil.sendMessage`, a thin wrapper over `org.drappula.arcadeApi.message.Messages` (it lives in `ArcadeAPI` so addons share it). Format `prefix:text;prefix:text`; prefixes `message:`, `title:`, `subtitle:`, `titletime:fadeInMs:stayMs:fadeOutMs`, `actionbar:`, `bossbar:text:progress:color:overlay`. Escape a literal `;` as `\;`. Unprefixed text is dropped for players and sent as chat to the console. Placeholders are `<name>` tokens filled from alternating key/value varargs; values are inserted literally, never parsed as markup.
+- Text is a MiniMessage subset translated to section-sign codes by `LegacyText`: colour names, `<b>`, `<i>`, `<u>`, `<st>`, `<obf>`, `<reset>`, closing tags, `<br>`. Hex colours, gradients and click/hover events are not supported.
+- Titles and action bars go through a `ScreenText` implementation; `ArcadeCore.onEnable` installs `XSeriesScreenText` (XSeries `Titles`/`ActionBar`). Without one, `Messages` falls back to chat. Boss bars are not implemented on any version: a `bossbar:` segment is shown as an action bar with its text.
+- Adding a message = new key in `messages.yml` **plus** a `MessagesConfig.get().getString("<key>")` call - both, or it NPEs/reads nothing.
 - `/arcade reload` reloads all three configs.
 
-## Commands (`MainCommand`, Brigadier via `LifecycleEvents.COMMANDS` — only `paper-plugin.yml`, no `plugin.yml`)
+## Commands (`MainCommand`, plain Bukkit `CommandExecutor` + `TabCompleter`, declared in the `commands:` block of `plugin.yml`)
 
+- No Brigadier: argument checks and tab completion are hand-written in `MainCommand`. Admin feedback with no `messages.yml` key goes through `Messages.chat`.
 - `/arcade` info · `reload` · `setspawn` · `start <game>` (perm `arcade.force-start`, fails silently on success) · `queue <game>` (player-only, `queue-joined`/`queue-denied`) · `map create|addspawn|enable|disable|list|delete` (perm `arcade.map.admin`; `create` uses invoker's world, `addspawn` invoker's exact location) · `map config <mapId> set <key> <value>|unset <key>|list` (per-map values for addon-registered `Game.getMapConfigOptions()`, typed + validated, stored in `map_config`).
-- `paper-plugin.yml` uses `processResources` token expansion for version/description — a literal `$` there breaks the build templating.
+- `plugin.yml` uses `processResources` token expansion for version/description, so a literal `$` there breaks the build templating.
 
 ## Dependencies
 
-`boosted-yaml` (+ spigot-serializer) and `sqlite-jdbc` are **both** shadow-bundled (`com.gradleup.shadow`, plugin module only) **and** runtime-resolved in `ArcadeCoreLoader` via `MavenLibraryResolver`. Don't remove either side without checking the other.
+`boosted-yaml` (+ `boosted-yaml-spigot`), `XSeries` and `sqlite-jdbc` are shadow-bundled into the jar (`com.gradleup.shadow`, plugin module only). Nothing is resolved at runtime; there is no `MavenLibraryResolver`. Only XSeries is relocated. Addons depend on ArcadeCore with `depend: [ArcadeCore]` in their own `plugin.yml`, which puts the ArcadeAPI classes on their classpath.
 
 ## Scope: framework only
 
@@ -81,4 +85,4 @@ After any behavior change, update this file if its facts went stale, and `API_US
 
 ## Docs
 
-`API_USAGE.md` is the addon-author guide (project setup → `Game` → arenas → queue → match lifecycle → ending a match). `CLAUDE.md` is partially stale (claims no test suite, predates orphan-arena sweeper/teams/winner APIs) — trust this file and the code over it.
+`API_USAGE.md` is the addon-author guide (project setup → `Game` → arenas → queue → match lifecycle → ending a match). `CLAUDE.md` is a shorter overview for Claude Code; where the two disagree, trust this file and the code.
