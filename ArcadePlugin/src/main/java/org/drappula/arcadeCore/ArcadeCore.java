@@ -11,6 +11,7 @@ import org.drappula.arcadeCore.config.MainConfig;
 import org.drappula.arcadeCore.config.MessagesConfig;
 import org.drappula.arcadeCore.database.Database;
 import org.drappula.arcadeCore.listeners.LobbyListener;
+import org.drappula.arcadeCore.listeners.LobbyWorldListener;
 import org.drappula.arcadeCore.listeners.MatchListener;
 import org.drappula.arcadeCore.managers.game.GameManager;
 import org.drappula.arcadeCore.managers.map.MapManager;
@@ -59,6 +60,7 @@ public final class ArcadeCore extends JavaPlugin {
     }
     private void registerListeners() {
         getServer().getPluginManager().registerEvents(new LobbyListener(), this);
+        getServer().getPluginManager().registerEvents(new LobbyWorldListener(), this);
         getServer().getPluginManager().registerEvents(new MatchListener(), this);
     }
     private void registerAPI() {

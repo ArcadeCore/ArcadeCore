@@ -559,4 +559,77 @@ class MainCommandTest extends ServerTest {
         assertTrue(tab(nobody(), "start", "").isEmpty());
         assertTrue(tab(nobody(), "queue", "").contains("game"));
     }
+
+    @Test
+    void mapTeleportToFirstSpawn() throws Exception {
+        GameManager.get().registerGame(new FakeGame());
+        PlayerMock player = adminPlayer();
+        String world = player.getWorld().getName();
+        MapManager.get().createMap("arena", "game", "Arena", world);
+        org.bukkit.Location first = new org.bukkit.Location(player.getWorld(), 10, 65, 10);
+        org.bukkit.Location second = new org.bukkit.Location(player.getWorld(), 20, 65, 20);
+        MapManager.get().addSpawn("arena", first);
+        MapManager.get().addSpawn("arena", second);
+        player.teleport(new org.bukkit.Location(player.getWorld(), 0, 65, 0));
+
+        run(player, "map", "teleport", "arena");
+
+        assertEquals(10, player.getLocation().getX());
+        assertEquals(10, player.getLocation().getZ());
+        assertTrue(next(player).contains("Teleported"));
+    }
+
+    @Test
+    void mapTeleportUnknownMap() {
+        PlayerMock player = adminPlayer();
+
+        run(player, "map", "teleport", "missing");
+
+        assertTrue(next(player).contains("Unknown map"));
+    }
+
+    @Test
+    void mapTeleportRejectsNonPlayerSender() throws Exception {
+        GameManager.get().registerGame(new FakeGame());
+        MapManager.get().createMap("arena", "game", "Arena", "world");
+        CommandSender sender = admin();
+
+        run(sender, "map", "teleport", "arena");
+
+        assertTrue(received(sender).contains("Only players"));
+    }
+
+    @Test
+    void mapTeleportUnloadedWorldErrors() throws Exception {
+        GameManager.get().registerGame(new FakeGame());
+        MapManager.get().createMap("arena", "game", "Arena", "missing-world");
+        PlayerMock player = adminPlayer();
+
+        run(player, "map", "teleport", "arena");
+
+        assertTrue(next(player).contains("not loaded"));
+    }
+
+    @Test
+    void mapTeleportNoSpawnsFallsBackToWorldSpawn() throws Exception {
+        GameManager.get().registerGame(new FakeGame());
+        PlayerMock player = adminPlayer();
+        String world = player.getWorld().getName();
+        MapManager.get().createMap("arena", "game", "Arena", world);
+        player.teleport(new org.bukkit.Location(player.getWorld(), 50, 65, 50));
+
+        run(player, "map", "teleport", "arena");
+
+        assertEquals(player.getWorld().getSpawnLocation(), player.getLocation());
+        assertTrue(next(player).contains("Teleported"));
+    }
+
+    @Test
+    void tabCompletesTeleportMapIds() throws Exception {
+        GameManager.get().registerGame(new FakeGame());
+        MapManager.get().createMap("arena", "game", "Arena", "world");
+
+        assertTrue(tab(admin(), "map", "teleport", "").contains("arena"));
+        assertTrue(tab(admin(), "map", "").contains("teleport"));
+    }
 }

@@ -1,9 +1,30 @@
 # set the lobby using
 lobby:
+  # Master switch for every lobby protection below (damage, hunger, interact
+  # and all disable-* flags). Set to false to restore vanilla behavior. On by default.
+  protection: true
   # Whether the player should be teleported to spawn on join or not
   teleport-spawn: true
   gamemode: ADVENTURE
   fly-enabled: true
+  # Whether players outside of a match take no damage (and cannot deal damage). On by default.
+  disable-damage: true
+  # Lobby-world protections below. Each applies only inside the lobby world
+  # (the configured spawn world, or the default world when unset). All on by default.
+  disable-explosions: true
+  disable-block-edit: true
+  disable-item-pickup-drop: true
+  disable-item-frames: true
+  disable-nature-spread: true
+  disable-mob-weather: true
+  disable-buckets: true
+  disable-hanging-place: true
+  disable-fire-ignition: true
+  disable-entity-griefing: true
+  disable-armor-stands: true
+  disable-portals: true
+  disable-ender-pearls: true
+  disable-contraptions: true
 
 match:
   start-countdown: 10.0 # in seconds
@@ -16,4 +37,4 @@ queue:
   # how long to wait for more players once a game's minimum player count is met, before starting anyway
   start-countdown: 20.0 # in seconds
 
-version: 2
+version: 5

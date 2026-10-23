@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Locale;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -35,7 +36,7 @@ import org.drappula.arcadeCore.util.MessageUtil;
  */
 public class MainCommand implements CommandExecutor, TabCompleter {
     private static final List<String> ROOT = Arrays.asList("reload", "setspawn", "start", "queue", "map");
-    private static final List<String> MAP = Arrays.asList("create", "addspawn", "enable", "disable", "list", "delete", "config");
+    private static final List<String> MAP = Arrays.asList("create", "addspawn", "enable", "disable", "list", "delete", "config", "teleport");
     private static final List<String> CONFIG = Arrays.asList("set", "unset", "list");
 
     private static final String USAGE = "<red>Usage: /arcade [reload|setspawn|start <game>|queue <game>|map ...]";
@@ -106,6 +107,11 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             case "delete":
                 if (args.length < 3) return usage(sender);
                 mapDelete(sender, args[2]);
+                return true;
+            case "teleport":
+            case "tp":
+                if (args.length < 3) return usage(sender);
+                mapTeleport(sender, args[2]);
                 return true;
             case "config":
                 return mapConfig(sender, args);
@@ -424,6 +430,27 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             Messages.chat(sender, "<red>Failed to delete the map. See the console for more details.");
             Log.error("Failed to delete map {}", mapId, e);
         }
+    }
+
+    private void mapTeleport(CommandSender sender, String mapId) {
+        ArcadeMap map = MapManager.get().getMap(mapId);
+        if (map == null) {
+            unknownMap(sender, mapId);
+            return;
+        }
+        if (!(sender instanceof Player)) {
+            Messages.chat(sender, "<red>Only players can teleport to maps.");
+            return;
+        }
+        World world = map.getWorld();
+        if (world == null) {
+            Messages.chat(sender, "<red>Map world <gray><world></gray> is not loaded.", "world", map.getWorldName());
+            return;
+        }
+        List<Location> spawns = map.getSpawnPoints();
+        Location dest = spawns.isEmpty() ? world.getSpawnLocation() : spawns.get(0);
+        ((Player) sender).teleport(dest);
+        Messages.chat(sender, "<green>Teleported to map <gray><id></gray>.", "id", mapId);
     }
 
     private void info(CommandSender sender) {

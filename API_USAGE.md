@@ -3,11 +3,13 @@
 How to build a minigame addon on top of ArcadeCore, from project setup to the
 final `end()` call, covering only the `ArcadeAPI` module (version 1.1.0): the
 interfaces, events and message helper your plugin compiles against.
-ArcadeBedrockPillars (`../ArcadeBedrockPillars`) and ArcadeFFA (`../ArcadeFFA`)
-are working examples of everything below.
 
 ArcadeCore runs on Minecraft 1.8 to 26.3 with one jar, and addons are expected
 to do the same. Section 2.3 lists what that means for your code.
+
+ArcadeBedrockPillars (`../ArcadeBedrockPillars`) is the reference addon. It is
+still compiled against ArcadeAPI 1.0.0, so treat its build file as a pattern
+only, not as current API usage.
 
 ## 1. Who owns what
 
@@ -19,7 +21,7 @@ ArcadeCore owns the plumbing; your addon owns the rules.
 | Map pool acquire/release, spawn teleport | Arena building (optional, procedural) |
 | Participant tracking, elimination bookkeeping | Death → elimination wiring |
 | Match start/end countdowns, teardown, lobby return | Calling `IMatch.end()` at the right moment |
-| Win/loss stats persistence | Declaring winners via `setWinnerParticipants` |
+| Win/loss stats persistence | Declaring winners (`setWinnerParticipants`), custom counters via `addStat` (§9.1) |
 | `Game` registration, `ArcadeAPI` provider | Registering/unregistering your `Game` |
 
 The core deliberately has no last-player-standing check, no timer expiry,
@@ -59,14 +61,15 @@ because `compileOnly` is not on the test classpath.
 
 ### 2.2 `plugin.yml`
 
-Use a plain `plugin.yml` (no `paper-plugin.yml`, no `api-version`). `depend`
-makes ArcadeCore load first and puts its classes, including `ArcadeAPI`, on
-your plugin's classpath. Commands are declared here too (section 3):
+Use a plain `plugin.yml` (no `paper-plugin.yml`). `depend` makes ArcadeCore load
+first and puts its classes, including `ArcadeAPI`, on your plugin's classpath.
+Commands are declared here too (section 3):
 
 ```yaml
 name: MyMinigame
 version: '1.0.0'
 main: com.example.myminigame.MyMinigame
+api-version: '1.13'
 load: POSTWORLD
 depend: [ ArcadeCore ]
 commands:
@@ -74,6 +77,13 @@ commands:
     description: My minigame
     usage: /mygame [join|leave]
 ```
+
+**Declare `api-version: '1.13'`, the same value the core uses.** Servers 1.8 to
+1.12 ignore the field, so it costs nothing there; on 1.13+ a missing or lower
+`api-version` makes the server initialise legacy material support, which stalls
+the main thread for seconds on every material conversion. That is slow enough
+to have been measured as a match-start stall. Never set it to `1.21`/`1.21.11`
+like `paper-plugin.yml` would: the server must not refuse to load you on 1.8.
 
 ### 2.3 Staying 1.8-compatible
 
@@ -100,9 +110,11 @@ apply to addons:
   ArcadeBedrockPillars does the latter: `config.yml` keeps modern names and
   unknown entries are skipped.
 - XSeries is not on your classpath. ArcadeCore shades and relocates its own
-  copy to `org.drappula.arcadeCore.libs.xseries`, which is not part of the API.
-  If you use XSeries, shade and relocate your own copy into your jar
-  (ArcadeBedrockPillars relocates to `org.drappula.arcadeBedrockPillars.libs.xseries`).
+  copy to `org.drappula.arcadeCore.libs.xseries`, which is not part of the API
+  and must not be referenced from an addon. If you want XSeries, shade and
+  relocate your own copy into your jar under a package of your own; you are on
+  your own from there. ArcadeBedrockPillars sidesteps it entirely by reading
+  material names from config instead of hardcoding them.
 - Chunk generators: use the legacy `generateChunkData` API, which every
   version still accepts. `WorldCreator.name(...)` for world creation.
 - Things that degrade on old versions: there is no boss bar on 1.8 (and
@@ -113,8 +125,8 @@ apply to addons:
   supports.
 - Tests (MockBukkit v1.21, JDK 21) run on a modern API. A passing test does not
   prove a call exists on 1.8. Boot your jar on an old server before claiming
-  compatibility; `../TestServer-matrix/matrix.sh` does that for 1.8.8, 1.12.2,
-  1.16.5, 1.20.4, 1.21.4 and 26.3.
+  compatibility, oldest first: 1.8.8, 1.12.2, 1.16.5, 1.20.4, 1.21.4, then the
+  current version. The core is verified across exactly that set.
 
 ## 3. Plugin entrypoint: register your game
 
@@ -140,14 +152,20 @@ public class MyMinigame extends JavaPlugin {
 }
 ```
 
-- `registerGame` calls your `Game.onRegister()`; `unregisterGame` calls
-  `onUnregister()` and drops the game's queue, firing `QueueLeaveEvent`
-  with `GAME_UNREGISTERED` for each queued player. Game ids are lowercased
-  internally and must not be blank or contain spaces (`IllegalArgumentException`
-  otherwise).
+- `registerGame` calls your `Game.onRegister()` and pre-fills your default
+  `map_config` rows; `unregisterGame` calls `onUnregister()` and drops the
+  game's queue, firing `QueueLeaveEvent` with `GAME_UNREGISTERED` for each
+  queued player. Game ids are lowercased internally and must not be blank or
+  contain spaces (`IllegalArgumentException` otherwise).
+- `IGameManager` also offers `unregisterGame(String id)`,
+  `getGame(String id)` (null when unknown), `getRegisteredGames()` and
+  `isRegistered(String id)`. Look your game up by id — never cache a `Game`
+  reference across a reload.
 - `ArcadeAPIProvider.get()` is the single entry point. It throws
   `IllegalStateException` when the API isn't loaded. The `depend: [ ArcadeCore ]`
-  entry above is what prevents that.
+  entry above is what prevents that. `ArcadeAPIProvider.register(...)` throws
+  if an API is already registered, so tests must call `unregister()` in
+  teardown.
 - Commands are plain Bukkit: a `CommandExecutor` (and optionally a
   `TabCompleter`) wired with `getCommand(name).setExecutor(...)` for a command
   declared under `commands:` in your `plugin.yml`. Core itself and the existing
@@ -184,18 +202,69 @@ What you can override:
 
 | Member | Default | Meaning |
 |---|---|---|
-| `isEnabled()` | `true` | Disabled games reject queue joins (`JoinResult.GAME_DISABLED`) and can't start matches |
+| `isEnabled()` | `true` | Disabled games reject queue joins (`JoinResult.GAME_DISABLED`). A direct `startMatch` on a disabled game throws `IllegalStateException` — it does not return null |
 | `getMinPlayers()` / `getMaxPlayers()` | `playersRequired` | Queue thresholds; countdown starts at min, match starts immediately at max |
-| `getGameEndSettings()` | `GameEndSettings.DEFAULT` | Gamemode/fly applied to players when the match ends |
-| `isTeamBased()` / `getTeamSettings()` | solo (`TeamSettings.DISABLED`) | Return `TeamSettings.of(teamSize, maxTeams)` for team games; the core partitions players at match start |
-| `getQueueCountdownSeconds()` | empty → `queue.start-countdown` (20 s) | Per-game queue countdown override |
-| `getStartCountdownSeconds()` | empty → `match.start-countdown` (10 s) | Per-game match-start countdown override |
+| `getGameEndSettings()` | `GameEndSettings.DEFAULT` | Gamemode/fly applied to a player when they are eliminated. `DEFAULT` falls back to the server's `match.end.gamemode` / `match.end.fly-enabled` (§11); any non-`DEFAULT` value overrides the server config |
+| `isTeamBased()` / `getTeamSettings()` | solo (`TeamSettings.DISABLED`) | Return `TeamSettings.of(teamSize, maxTeams)` for team games; the core partitions players at match start. `isTeamBased()` defaults to `getTeamSettings().isEnabled()`, so overriding `getTeamSettings()` alone is enough |
+| `getQueueCountdownSeconds()` | `OptionalDouble.empty()` → `queue.start-countdown` (20 s) | Per-game queue countdown override |
+| `getStartCountdownSeconds()` | `OptionalDouble.empty()` → `match.start-countdown` (10 s) | Per-game match-start countdown override |
 | `getMapConfigOptions()` | empty | Per-map tuning knobs (e.g. `MapConfigOption.integer("lava-blocks-rise-per-minute", 2, 0, 60)`); admins set values via `/arcade map config <map> set <key> <value>`, read them via `map.getIntConfig(...)` / `getDecimalConfig` / `getBooleanConfig` / `getTextConfig` |
 | `getMatchStartSettings()` | cages on, freeze on | Core spawn cages + countdown movement freeze; return `MatchStartSettings.create(false, ...)` to opt out of either |
 | `createArena(world, players)` | `null` → static map pool | Build into the given arena world to bypass the pool |
 | `onRegister` / `onUnregister` | no-op | Game lifecycle hooks |
 | `onMatchStart` / `onMatchEnd` | no-op | Match lifecycle hooks: start/stop your tasks here, no listener required |
 | `onParticipantEliminate(participant, killer)` | no-op | Per-elimination hook |
+
+Both countdown overrides return `OptionalDouble`, so the "no override" case is
+`OptionalDouble.empty()` rather than `0` or `-1`:
+
+```java
+@Override
+public OptionalDouble getStartCountdownSeconds() {
+    return OptionalDouble.of(5.0); // or OptionalDouble.empty() for the config value
+}
+```
+
+### 4.1 `GameEndSettings`
+
+Three factories, so you can write it against Bukkit types or the version-neutral
+enums. `EndGameMode` and `EndFlyEnabled` both have a `DEFAULT` member, which is
+what selects the server's `match.end.*` config:
+
+```java
+GameEndSettings.create(GameMode.SPECTATOR, true)               // Bukkit types
+GameEndSettings.create(EndGameMode.SPECTATOR, EndFlyEnabled.TRUE)
+GameEndSettings.create(null, null)                             // follow config.yml
+```
+
+### 4.2 `MapConfigOption`
+
+Four factories; keys must match `[a-z0-9-]+` or the constructor throws:
+
+```java
+MapConfigOption.integer("lava-blocks-rise-per-minute", 2, 0, 60);
+MapConfigOption.decimal("lava-speed", 1.5, 0.0, 10.0);
+MapConfigOption.booleanOption("auto-start", true);
+MapConfigOption.text("display-name", "Bedrock Pillars");
+```
+
+`key()`, `type()`, `defaultValue()` and `validateAndCanonicalize(String)` are
+public; the core uses them to validate admin input and hand you the canonical
+string to store.
+
+### 4.3 `TeamSettings`
+
+`TeamSettings.of(teamSize, maxTeams)` leaves friendly fire off. For the
+three-argument form use the constructor:
+
+```java
+TeamSettings.of(4, 4);                                  // friendly fire off
+new TeamSettings(4, 4, /* friendlyFire */ true);
+```
+
+`isEnabled()` is true when both `teamSize` and `maxTeams` are positive. Players
+beyond `maxTeams * teamSize` overflow into the last team rather than spawning
+unbounded teams.
 
 ## 5. Arenas: two ways to get a map
 
@@ -238,13 +307,31 @@ Gotchas:
 - Your map is passed to `MatchStartEvent`/`MatchEndEvent`; tear it down in
   `onMatchEnd` or your `MatchEndEvent` handler (restore borders, clear
   blocks). The core only releases *pooled* maps itself.
+- `getSpawnPoints()`, `getSpectatingPlayers()` and every other list getter on
+  `IMatch` return defensive copies. Mutating them does nothing; use the
+  `addSpectator`/`removeSpectator` and `setWinnerParticipants` setters.
+
+`IArcadeMap` ships defaults you can use without implementing anything else:
+`getSpawnCount()`, `isAvailable()` (enabled, unused, at least one spawn),
+`getRandomSpawn()` (null when there are no spawns), `getConfigOverrides()` (raw
+stored `Map<String, String>`, empty by default), and `getConfigValue(key)` plus
+the typed `getIntConfig` / `getDecimalConfig` / `getBooleanConfig` /
+`getTextConfig`. For a procedural arena those defaults apply as written: an
+empty override map means every key falls back to your declared default.
+
+`getConfigValue` throws `IllegalArgumentException` for a key your game never
+registered, so only ask for options you declared in `getMapConfigOptions()`. A
+stored value that no longer validates (hand-edited database) logs a warning and
+falls back to the default rather than throwing at read time.
 
 ### 5.2 Static pool (no code)
 
 Return `null` (the default) and manage maps in-game via `/arcade map ...`
-(`create`, `addspawn`, `enable`, `disable`, `list`, `delete`). The core
+(`create`, `addspawn`, `enable`, `disable`, `list`, `delete`, `teleport`, `config`). The core
 acquires an enabled, unused map with enough spawns, or fails the start with
 `map-unavailable`. Use this for hand-built arenas; use §5.1 for generated ones.
+Inspect a map with `/arcade map teleport <map>` (alias `tp`, player-only,
+`arcade.map.admin`): first spawn point, or the world spawn when it has none.
 
 ## 6. Queue: getting players into a match
 
@@ -262,8 +349,16 @@ if (result != JoinResult.SUCCESS) {
 
 `JoinResult`: `SUCCESS`, `ALREADY_QUEUED`, `ALREADY_IN_MATCH`,
 `EVENT_DENIED` (a `QueueEnterEvent` listener cancelled), `GAME_DISABLED`.
+Checks run in that order for a single player: a disabled game reports
+`GAME_DISABLED` regardless of the player's state. `ALREADY_QUEUED` only comes
+back for the *same* game — queueing for game B while queued for game A
+silently leaves A first and joins B, firing `QueueLeaveEvent(LEAVE)` for A.
+Anyone in any match cannot queue at all and gets `ALREADY_IN_MATCH`.
+
 For parties, use `joinQueue(Collection<Player>, Game)`: one all-or-nothing
-join that keeps the group contiguous for team partitioning.
+join that keeps the group contiguous for team partitioning. It validates the
+whole group before adding anyone, so it is all-or-nothing in a stronger sense
+than the single-player form; an empty collection returns `EVENT_DENIED`.
 
 What happens next is automatic:
 
@@ -282,27 +377,57 @@ queued. Fires `QueueLeaveEvent` with a `QueueLeaveReason`
 (`LEAVE`, `QUIT`, `MATCH_START`, `KICK`, `GAME_UNREGISTERED`).
 `leaveQueue` during a running countdown below minimum cancels it.
 
-To start a match programmatically (admin command, tests), bypass the queue:
+For a "players waiting: N" line in your own command, `IQueueManager` also has
+`getQueue(game)`, `getQueueSize(game)`, `getQueuePosition(player)` (1-based,
+`-1` when not queued), `isQueued(player)` and `getQueuedGame(player)`.
+
+### 6.1 Starting without the queue
+
+Two different things, easy to confuse:
 
 ```java
+// Force-start whatever is already queued right now (what /arcade start does).
+// Returns false when the queue is empty — it never starts an empty match.
+boolean started = ArcadeAPIProvider.get().getQueueManager().forceStart(game);
+
+// Build a match from an explicit player list, bypassing the queue entirely.
 IMatch match = ArcadeAPIProvider.get().getMatchManager().startMatch(game, players);
-// null → same failure modes as above
 ```
+
+`startMatch` returns `null` on the same failure modes as above (no free map,
+too few spawns, `MatchStartEvent` denied). It throws `IllegalStateException` if
+the game reports `isEnabled() == false`, so check that before a manual start.
+Queue-based starts recycle the players automatically; manual starts do not —
+handle the null yourself.
 
 ## 7. Match lifecycle
 
 States: `LOADING → STARTING → STARTED → ENDING → ENDED`.
-`setState` fires `MatchStateChangeEvent(old, new)` on every transition.
+Every transition fires `MatchStateChangeEvent(match, old, new)`.
 
 | Transition | Trigger | What the core does |
 |---|---|---|
-| → `STARTING` | `startMatch` (queue filled or direct call); cancellable `MatchStartEvent` | Teleports players to spawns in order; runs `MatchStartTask` countdown (`match.start-countdown`, default 10 s, or your override) |
-| → `STARTED` | Countdown expires | Sends `match-started`; calls `game.onMatchStart(match)`: start your repeating tasks here |
-| → `ENDING` | `match.end()`; cancellable `MatchEndEvent` | Runs `MatchEndTask`: 5 s teardown |
-| → `ENDED` | Teardown completes | Calls `game.onMatchEnd(match)`; records stats (§9); depopulates; releases pooled map; sends `match-ended`; returns everyone to the lobby |
+| → `STARTING` | `startMatch` (queue filled or direct call); cancellable `MatchStartEvent` | Teleports players to spawns in order; builds spawn cages; runs `MatchStartTask` countdown (`match.start-countdown`, default 10 s, or your override) |
+| → `STARTED` | Countdown expires | Clears the cages; sends `match-started`; calls `game.onMatchStart(match)`: start your repeating tasks here |
+| → `ENDING` | `match.end()` / `endMatch(match)`; cancellable `MatchEndEvent` | Clears the cages; broadcasts `match-ended` (and `match-won` if you declared winners); eliminates every remaining participant; runs `MatchEndTask`: 5 s teardown |
+| → `ENDED` | Teardown completes | Calls `game.onMatchEnd(match)`; records stats (§9); depopulates; releases pooled map; deletes the arena world; clears inventories; returns everyone to the lobby |
 
-Useful lookups on `IMatchManager`: `getMatch(player)`, `getMatchesForGame(game)`,
-`getAllMatches()`, `getMatchById(uuid)`.
+Useful lookups on `IMatchManager`:
+
+| Call | Returns |
+|---|---|
+| `getMatch(player)` | `Optional<IMatch>` — present for participants **and** spectators |
+| `getMatchById(UUID)` | `Optional<IMatch>` |
+| `getMatchesForGame(game)` / `getMatchesForGame(String gameId)` | `List<IMatch>` |
+| `getAllMatches()` | `List<IMatch>` |
+| `endMatch(match)` | void — same path as `match.end()`, idempotent once `ENDING` |
+| `eliminateParticipant(participant)` | void — same as `participant.eliminate()` |
+
+All list getters return defensive copies.
+
+`IMatch` also exposes `getId()`, `getStartedAt()` (`Instant`, set at match
+creation, not at start), `isRunning()` (true in `STARTING` or `STARTED`),
+`getSpectatingPlayers()` and `getWinnerParticipants()`.
 
 ## 8. Running the match: participants, elimination, teams
 
@@ -318,6 +443,19 @@ IParticipant participant = ArcadeAPIProvider.get().getParticipant(game, player);
 `IMatch`: `getParticipants()` (everyone who started, alive or not),
 `getAliveParticipants()`, `getEliminatedParticipants()`, `getAliveCount()`.
 All of these return defensive copies.
+
+**The two player lookups disagree once someone is eliminated.**
+`getParticipant(game, player)` searches the game's *alive* roster, so it
+returns `null` for a player you just eliminated — "not alive", not "not in
+this game". `getMatchManager().getMatch(player)` searches the whole match plus
+its spectators, so it still returns the match for an eliminated player. Reach
+for `getParticipant` when you mean "still playing"; reach for
+`getMatch()`/`isInMatch(player)` when you mean "is this player tied to a match
+at all", which is what you want in a respawn, chat or inventory handler.
+
+`IParticipant.getUserData()` and `getProfile()` read through the live profile,
+so they are the cheap way to reach a player's name and stats from inside a
+match.
 
 ### 8.2 Elimination: you wire the trigger
 
@@ -355,10 +493,13 @@ To eliminate directly: `IMatchManager.eliminateParticipant(participant)`.
 
 ### 8.3 Teams
 
-Return `TeamSettings.of(teamSize, maxTeams)` from `getTeamSettings()`. That
-flips `isTeamBased()` on. The core partitions match players into `ITeam`s
+Return `TeamSettings.of(teamSize, maxTeams)` from `getTeamSettings()` (§4.3).
+That flips `isTeamBased()` on. The core partitions match players into `ITeam`s
 at creation. Read them via `match.getTeams()` or `participant.getTeam()`:
-`getMembers()`, `getAliveMembers()`, `isEliminated()` (no alive members left).
+`getId()`, `getName()`, `getMatch()`, `getMembers()`, `getAliveMembers()`,
+`getSize()`, `getAliveCount()`, `isEliminated()` (no alive members left).
+`isFriendlyFire` on `TeamSettings` is your own flag to read and enforce — the
+core does not block friendly damage.
 
 ### 8.4 Talking to players
 
@@ -366,10 +507,11 @@ All player text goes through `org.drappula.arcadeApi.message.Messages`. It does
 not use Adventure or MiniMessage, so it behaves the same on every version.
 
 ```java
-match.broadcast("message:<gold>Final showdown!");                    // everyone in the match
+match.broadcast("message:<gold>Final showdown!");                    // participants + spectators
 match.broadcast("title:<red>Round <n>;subtitle:<gray>Fight!", "n", "3");
 
 Messages.send(player, "actionbar:<yellow>Lava rising to <y>", "y", "40");   // prefix-routed
+Messages.send(sender, "message:<gold>Hi");                           // any CommandSender
 Messages.chat(sender, "<red>Unknown option <gray><key></gray>", "key", key); // plain chat, no prefix needed
 ```
 
@@ -380,13 +522,31 @@ Messages.chat(sender, "<red>Unknown option <gray><key></gray>", "key", key); // 
 - **Unprefixed text is dropped for players** (the console gets it as chat), so
   `broadcast` and `Messages.send` need a prefix, usually `message:`.
   `Messages.chat` is the exception: it always sends chat and takes no prefix.
+- `Messages.send(CommandSender, ...)` handles the console too, but only the
+  `message:` and `actionbar:` segments; title/subtitle segments are skipped for
+  non-players.
 - Placeholders are `<name>` tokens in the text, filled from alternating
   key/value `String` varargs: `"name", "Bob"`. Values are inserted literally and
   never parsed as markup, so player names or user input cannot inject colours.
-- Styling is a MiniMessage subset translated to section-sign codes: the 16
-  colour names (`<red>`, `<dark_gray>`, ...), `<b>`, `<i>`, `<u>`, `<st>`,
-  `<obf>`, `<reset>`, closing tags like `</b>`, and `<br>`. Hex colours,
-  gradients, click and hover events are not supported; unknown tags stay as text.
+- Styling is a MiniMessage subset translated to section-sign codes by
+  `LegacyText`, so it works identically on 1.8 and 1.21:
+  - the 16 colour names (`<black>`, `<dark_blue>`, `<gray>`/`<grey>`,
+    `<light_purple>`, ...), plus `<color:green>` and its British spelling
+    `<colour:green>`;
+  - formats `<b>`/`<bold>`, `<i>`/`<em>`/`<italic>`, `<u>`/`<underlined>`,
+    `<st>`/`<strikethrough>`, `<obf>`/`<obfuscated>`, and `<reset>`;
+  - `<br>` / `<newline>` for a line break;
+  - closing tags (`</b>`, `</color>`, `</#ff5555>`), which restore the exact
+    colours and formats that were in effect before the tag opened.
+  - Gradients, click and hover events are **not** supported; an unknown tag is
+    left as literal text, so a stray `<` in a player name prints as typed.
+- **Hex colours are accepted but downgraded.** `<#ff5555>` and
+  `<color:#ff5555>` parse fine, but the output is a section-sign code, so the
+  result is the *nearest* of the 16 legacy colours (`<#ff5555>` → `§c`) —
+  never a true RGB colour, and never a leftover `<#...>` tag. Don't design
+  around exact hex; use it as a convenient shorthand.
+- `LegacyText.strip(text)` removes every section-sign code, leaving plain
+  text, if you need uncoloured output for a scoreboard or a log line.
 - Titles and action bars are drawn by XSeries inside ArcadeCore. Boss bars are
   not implemented: a `bossbar:` segment is shown as an action bar on every
   version.
@@ -397,22 +557,40 @@ Messages.chat(sender, "<red>Unknown option <gray><key></gray>", "key", key); // 
 
 Other helpers:
 
-- `addSpectator` / `removeSpectator` / `isSpectating` manage viewers.
-- `ArcadeAPI.sendToLobby(player)` returns a player to the lobby manually.
+- `IMatch.addSpectator` / `removeSpectator` / `isSpectating` manage viewers;
+  `getSpectatingPlayers()` lists them. `broadcast` reaches spectators too.
+- `ArcadeAPI.sendToLobby(player)` resets the player's health, gamemode and fly
+  state, and teleports to the configured lobby spawn (falling back to the
+  default world's spawn). It does **not** clear the inventory, and it respects
+  `lobby.teleport-spawn` — with that flag off it only resets state, leaving a
+  stranded player where they are. Clear the inventory yourself if you are
+  using it to rescue someone.
+- `ArcadeAPI.getPlayerService()` exposes the same two steps separately:
+  `sendToLobby(player)` and `resetPlayerState(player, gameMode, flying)`.
 
 ### 8.5 Spawn rules (core-enforced)
 
 Outside matches the core protects spawns: joining clears your inventory and
-applies the lobby gamemode, damage for or by lobby players is cancelled,
+applies the lobby gamemode, damage for or by lobby players is cancelled
+when `lobby.disable-damage` is true (default),
 hunger never changes, and only right-click interaction works (so hotbar menu
-items keep working). Matches themselves are unaffected.
+items keep working). The lobby world itself is guarded too: 14 `lobby.disable-*`
+flags (all default true, each ANDed with the `lobby.protection` master switch, §11) block explosions, block edit, item pickup/drop,
+frame/hanging changes, nature spread, mobs/weather, buckets, ignition, entity
+griefing, armor stands, portal travel, pearls and contraptions. Matches themselves are unaffected.
 
 During the match start countdown the core additionally cages every
-participant in glass and freezes movement (both default-on, see
-`getMatchStartSettings()`). Cages snapshot whatever they cover and restore
-it when the match starts - safe on hand-built maps. Your win-condition and
-elimination wiring are unaffected; only block-breaking/placing during the
-countdown stays yours to guard.
+participant and freezes movement (both default-on, see
+`getMatchStartSettings()`). The cage is a 3×3 glass ring around the spawn's
+feet block at two levels plus a glass cap one block above the head, leaving
+the feet cell free. Every caged cell is snapshotted with its full `BlockState`
+(so 1.8 data values and 1.13+ block states both survive) and restored, not
+merely cleared, when the countdown ends or the match ends early — safe on
+hand-built maps.
+
+If you opt out of cages with `MatchStartSettings.create(false, true)`, keep
+in mind the core's freeze only stops movement; block-breaking and placing
+during the countdown stays yours to guard either way.
 
 ## 9. Ending the match and stats
 
@@ -425,12 +603,45 @@ match.end();                          // or atomically: match.endWithWinners(win
 
 - `MatchEndEvent` is cancellable; cancelling aborts the end.
 - The 5 s `MatchEndTask` eliminates any remainder first, then on completion:
-  `onMatchEnd` → **stats** → depopulate → release pooled map → lobby return.
+  `onMatchEnd` → **stats** → depopulate → release pooled map → delete the arena
+  world → clear inventories → lobby return.
 - Stats: winners get +1 win, all other participants +1 loss for your
   `game_id`. Skipped entirely when no winners were declared. The core logs
   failures without breaking teardown.
-- Read stats back via `ArcadeAPI.getStatsManager()` (`IGameStatsManager`) and
-  player data via `getUserData(uuid)` / `getOrCreateUserData(uuid, name)`.
+
+Player data comes from `ArcadeAPI`: `getUserData(uuid)` (an `Optional`),
+`getOrCreateUserData(uuid, name)` and `saveUserData(userData)`. All three
+declare `SQLException`, as does every stats call — keep them small and off the
+hot path (§14, pitfall 6).
+
+### 9.1 Reading and writing stats
+
+`getStatsManager()` returns `IGameStatsManager`:
+
+| Call | Returns |
+|---|---|
+| `getStats(uuid, gameId)` | `Optional<GameStats>` — `wins`, `losses`, `points`, `getOther()` |
+| `getTopPlayers(gameId, limit)` | `List<GameStats>` ranked for one game |
+| `getTopOverall(limit)` | `List<GameStats>` across all games, each entry with `gameId` `"*"` |
+| `addPoints(uuid, username, gameId, delta)` | Adds to the `points` column |
+| `addStat(uuid, username, gameId, key, delta)` | Adds to a custom counter; `key` must match `[a-z0-9_]+` |
+| `getStat(uuid, gameId, key)` | That counter, `0` when absent |
+
+Custom counters (kills, survival seconds, blocks placed) are yours to write from
+`onMatchEnd`, and they come back on `GameStats.getOther()`:
+
+```java
+// In your game's onMatchEnd, before declaring winners:
+IGameStatsManager stats = ArcadeAPIProvider.get().getStatsManager();
+for (IParticipant p : match.getParticipants()) {
+    stats.addStat(p.getPlayer().getUniqueId(), p.getPlayer().getName(),
+            match.getGame().getId(), "kills", myKillCounts.getOrDefault(p, 0));
+}
+```
+
+Wins and losses are the core's to write. `addPoints`/`addStat` are the only
+parts of the stats surface an addon owns, so guard them with try/catch and
+never let a failure abort your `onMatchEnd`.
 
 For generated arenas, free your own structures in `onMatchEnd(match)` or a
 `MatchEndEvent` handler. The core only releases pooled maps.
@@ -457,10 +668,32 @@ Core `config.yml` (server owners tune these; your per-game overrides win):
 |---|---|---|
 | `queue.start-countdown` | 20 s | `getQueueCountdownSeconds()` |
 | `match.start-countdown` | 10 s | `getStartCountdownSeconds()` |
-| `lobby.*` | none | Spawn/lobby used by `sendToLobby` |
+| `match.end.gamemode` | `SPECTATOR` | `getGameEndSettings()` — a non-`DEFAULT` mode replaces it |
+| `match.end.fly-enabled` | `true` | `getGameEndSettings()` — a non-`DEFAULT` fly value replaces it |
+| `lobby.protection` | true | None: master switch — false restores vanilla behavior for everything below |
+| `lobby.disable-damage` | true | None: when on, players outside a match take no damage and lobby attackers can't hit match players |
+| `lobby.disable-explosions` | true | None: blast terrain damage cleared in the lobby world |
+| `lobby.disable-block-edit` | true | None: no block break/place in the lobby world |
+| `lobby.disable-item-pickup-drop` | true | None: no item pickup/drop in the lobby world |
+| `lobby.disable-item-frames` | true | None: no frame rotation or hanging breaks in the lobby world |
+| `lobby.disable-hanging-place` | true | None: no frame/painting placement in the lobby world |
+| `lobby.disable-nature-spread` | true | None: no leaf decay, spread/burn/grow/fade/form, tree growth in the lobby world |
+| `lobby.disable-fire-ignition` | true | None: no flint-and-steel/lava ignition in the lobby world |
+| `lobby.disable-entity-griefing` | true | None: no enderman/falling-block terrain changes in the lobby world |
+| `lobby.disable-mob-weather` | true | None: no creature spawns; storms can't start in the lobby world |
+| `lobby.disable-buckets` | true | None: no bucket empty/fill in the lobby world |
+| `lobby.disable-armor-stands` | true | None: no armor-stand manipulation in the lobby world |
+| `lobby.disable-portals` | true | None: no portal travel from the lobby world (creation already unreachable with defaults) |
+| `lobby.disable-ender-pearls` | true | None: no pearl teleports from the lobby world (other teleports unaffected) |
+| `lobby.disable-contraptions` | true | None: pistons/dispensers/redstone frozen in the lobby world |
+| `lobby.*` | none | Spawn/lobby used by `sendToLobby` (`teleport-spawn`, `gamemode`, `fly-enabled`) |
 
-Per-map config (for values that differ per arena, not per game):
-declare options in `getMapConfigOptions()` with a type, default, and bounds.
+`match.end.*` applies the moment a player is eliminated, not at match end — an
+eliminated player is parked as a spectator for the rest of the match. A server
+owner tunes these; a non-`DEFAULT` `getGameEndSettings()` from your game wins.
+
+Per-map config (for values that differ per arena, not per game): declare
+options in `getMapConfigOptions()` with a type, default, and bounds (§4.2).
 Admins set them in-game (`/arcade map config <map> set <key> <value>`,
 `unset` reverts to your default, `list` shows effective values); the core
 validates and persists them, pre-filling defaults as rows when a map is
@@ -536,6 +769,15 @@ void teardown() {
 
 - Fire real events through `server.getPluginManager().callEvent(...)` and
   advance schedulers with `server.getScheduler().performTicks(n)`.
+- Mock every manager your code actually calls. A `Mockito` mock returns
+  `null` for an unstubbed method, so an unmocked `getMatchManager()` surfaces
+  as an NPE at the call site rather than as a helpful message. If you test
+  `Optional`-returning methods, stub them with
+  `when(api.getMatchManager()).thenReturn(...)` and
+  `Optional.of(match)` explicitly.
+- `ArcadeAPIProvider.register(...)` throws if an API is already registered, so
+  a missing `ArcadeAPIProvider.unregister()` in teardown fails the *next* test
+  with a confusing message. Register once per test, unregister once.
 - MockBukkit's default worlds cap at y=128, so point your arena config at a
   taller `WorldMock` (e.g. `new WorldMock(Material.AIR, Biome.PLAINS, -64, 320, -64)`)
   for high-altitude builds.
@@ -557,9 +799,20 @@ void teardown() {
    → player `i`, so make sure your spawn list order matches your intent.
 6. **Keep DB work off the hot path.** The core calls the database
    synchronously on the server thread; your listeners should too stay small.
+   Every `ArcadeAPI`/`IGameStatsManager` data call throws `SQLException`, and
+   every stats call hits SQLite — do them in `onMatchEnd`, not per tick.
 7. **New cross-plugin surface goes in `ArcadeAPI` first**, then the impl
    singleton, then exposure through `ArcadeAPIImpl`. Never reach into
    `arcadeCore` internals from an addon.
 8. **Keep it 1.8-safe.** No Paper-only API, no Java 9+ syntax, no raw modern
    material names in code (section 2.3). `broadcast` and `Messages.send` text
    needs a `message:` (or other) prefix or players see nothing.
+9. **Set `api-version: '1.13'` in your `plugin.yml`** (section 2.2). Without it
+   modern servers enable legacy material conversion and stall the main thread.
+10. **`getConfigValue` throws on an unknown key.** Only read keys your game
+   registered in `getMapConfigOptions()`; an undeclared key is a
+   `IllegalArgumentException`, not a default.
+11. **List getters are defensive copies.** `getParticipants()`,
+   `getAliveParticipants()`, `getQueue()` and friends all hand you a copy.
+   Mutate through `setWinnerParticipants` / `addSpectator`, not the returned
+   list.

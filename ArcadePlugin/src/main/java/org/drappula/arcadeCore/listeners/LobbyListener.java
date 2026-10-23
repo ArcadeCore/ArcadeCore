@@ -15,6 +15,7 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.drappula.arcadeApi.systems.game.IMatch;
 import org.drappula.arcadeApi.systems.game.IParticipant;
 import org.drappula.arcadeApi.systems.queue.QueueLeaveReason;
+import org.drappula.arcadeCore.config.MainConfig;
 import org.drappula.arcadeCore.managers.ProfileManager;
 import org.drappula.arcadeCore.managers.game.MatchManager;
 import org.drappula.arcadeCore.managers.impl.Profile;
@@ -35,6 +36,9 @@ public class LobbyListener implements Listener {
 
     @EventHandler
     public void onDamage(EntityDamageEvent e) {
+        // Master kill-switch first, then the per-feature flag. Both on by default.
+        if (!LobbyProtection.protectionEnabled()) return;
+        if (!Boolean.TRUE.equals(MainConfig.get().getBoolean("lobby.disable-damage", true))) return;
         if (e.getEntity() instanceof Player && !inMatch((Player) e.getEntity())) {
             e.setCancelled(true);
             return;
@@ -54,6 +58,7 @@ public class LobbyListener implements Listener {
 
     @EventHandler
     public void onInteract(PlayerInteractEvent e) {
+        if (!LobbyProtection.protectionEnabled()) return;
         if (inMatch(e.getPlayer())) return;
         Action action = e.getAction();
         if (action == Action.LEFT_CLICK_AIR || action == Action.LEFT_CLICK_BLOCK
@@ -64,6 +69,7 @@ public class LobbyListener implements Listener {
 
     @EventHandler
     public void onHunger(FoodLevelChangeEvent e) {
+        if (!LobbyProtection.protectionEnabled()) return;
         if (e.getEntity() instanceof Player && !inMatch((Player) e.getEntity())) {
             e.setCancelled(true);
         }

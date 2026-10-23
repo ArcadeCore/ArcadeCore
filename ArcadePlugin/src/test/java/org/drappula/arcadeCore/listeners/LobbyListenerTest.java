@@ -291,4 +291,104 @@ class LobbyListenerTest extends ServerTest {
         assertEquals(1, match.getEliminatedParticipants().size());
         assertNull(ProfileManager.getProfile(player));
     }
+
+    @Test
+    void lobbyDamageProtectionDefaultsOn() {
+        assertTrue(org.drappula.arcadeCore.config.MainConfig.get().getBoolean("lobby.disable-damage", true));
+    }
+
+    @Test
+    void protectionMasterDefaultsOn() {
+        assertTrue(Boolean.TRUE.equals(org.drappula.arcadeCore.config.MainConfig.get().getBoolean("lobby.protection")));
+    }
+
+    @Test
+    void masterOffRestoresVanillaDamage() {
+        org.drappula.arcadeCore.config.MainConfig.get().set("lobby.protection", false);
+        try {
+            PlayerMock player = server.addPlayer();
+
+            org.bukkit.event.entity.EntityDamageEvent event =
+                    new org.bukkit.event.entity.EntityDamageEvent(player, org.bukkit.event.entity.EntityDamageEvent.DamageCause.FALL, 5.0);
+            listener.onDamage(event);
+
+            assertFalse(event.isCancelled());
+        } finally {
+            org.drappula.arcadeCore.config.MainConfig.get().set("lobby.protection", true);
+        }
+    }
+
+    @Test
+    void masterOffRestoresHunger() {
+        org.drappula.arcadeCore.config.MainConfig.get().set("lobby.protection", false);
+        try {
+            PlayerMock player = server.addPlayer();
+
+            org.bukkit.event.entity.FoodLevelChangeEvent event =
+                    new org.bukkit.event.entity.FoodLevelChangeEvent(player, 10);
+            listener.onHunger(event);
+
+            assertFalse(event.isCancelled());
+        } finally {
+            org.drappula.arcadeCore.config.MainConfig.get().set("lobby.protection", true);
+        }
+    }
+
+    @Test
+    void masterOffRestoresInteract() {
+        org.drappula.arcadeCore.config.MainConfig.get().set("lobby.protection", false);
+        try {
+            PlayerMock player = server.addPlayer();
+            org.bukkit.block.Block block = player.getLocation().getBlock();
+
+            org.bukkit.event.player.PlayerInteractEvent leftAir = new org.bukkit.event.player.PlayerInteractEvent(
+                    player, org.bukkit.event.block.Action.LEFT_CLICK_AIR,
+                    new org.bukkit.inventory.ItemStack(org.bukkit.Material.AIR), block,
+                    org.bukkit.block.BlockFace.NORTH);
+            listener.onInteract(leftAir);
+
+            assertFalse(leftAir.isCancelled());
+        } finally {
+            org.drappula.arcadeCore.config.MainConfig.get().set("lobby.protection", true);
+        }
+    }
+
+    @Test
+    void lobbyDamageAllowedWhenProtectionDisabled() {
+        org.drappula.arcadeCore.config.MainConfig.get().set("lobby.disable-damage", false);
+        try {
+            PlayerMock player = server.addPlayer();
+
+            org.bukkit.event.entity.EntityDamageEvent event =
+                    new org.bukkit.event.entity.EntityDamageEvent(player, org.bukkit.event.entity.EntityDamageEvent.DamageCause.FALL, 5.0);
+            listener.onDamage(event);
+
+            assertFalse(event.isCancelled());
+        } finally {
+            org.drappula.arcadeCore.config.MainConfig.get().set("lobby.disable-damage", true);
+        }
+    }
+
+    @Test
+    void lobbyAttackerCanHitMatchPlayerWhenProtectionDisabled() {
+        org.drappula.arcadeCore.config.MainConfig.get().set("lobby.disable-damage", false);
+        try {
+            Game game = new FakeGame();
+            GameManager.get().registerGame(game);
+            PlayerMock victim = server.addPlayer();
+            ProfileManager.registerProfile(new org.drappula.arcadeCore.managers.impl.Profile(victim));
+            Match match = new Match(game, new ArrayList<>(List.of(victim)), null);
+            GameManager.get().populateMatch(match);
+            PlayerMock attacker = server.addPlayer();
+
+            org.bukkit.event.entity.EntityDamageByEntityEvent event =
+                    new org.bukkit.event.entity.EntityDamageByEntityEvent(attacker, victim,
+                            org.bukkit.event.entity.EntityDamageEvent.DamageCause.ENTITY_ATTACK, 5.0);
+            listener.onDamage(event);
+
+            assertFalse(event.isCancelled());
+        } finally {
+            org.drappula.arcadeCore.config.MainConfig.get().set("lobby.disable-damage", true);
+        }
+    }
 }
